@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # SQLite by default so the team can start without Docker.
-    # For Postgres: postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_match
-    database_url: str = "sqlite:///./fsp_match.db"
+    # For Postgres: postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db
+    database_url: str = "sqlite:///./fsp_talent_db.db"
 
     # Grade change cooldown (days)
     grade_change_cooldown_days: int = 90

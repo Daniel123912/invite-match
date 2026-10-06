@@ -24,7 +24,7 @@ docker compose up --build
 
 ## Локальная разработка (без Docker)
 
-По умолчанию используется **SQLite** (`backend/fsp_match.db`) — можно стартовать сразу.
+По умолчанию используется **SQLite** (`backend/fsp_talent_db.db`) — можно стартовать сразу.
 
 ### 1. Backend
 
@@ -52,7 +52,7 @@ npm run dev
 ```
 
 Для Postgres: поднимите `docker compose up -d db` и в `backend/.env` поставьте  
-`DATABASE_URL=postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_match`.
+`DATABASE_URL=postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db`.
 
 ## Демо-аккаунты (после seed)
 
