@@ -20,7 +20,7 @@ export default function LoginPage() {
       const data = await api<TokenResponse>("/api/auth/login", {
         method: "POST",
         form: true,
-        body: { username: email, password } as unknown as BodyInit,
+        body: { username: email, password },
       });
       setAuth(data);
       router.push(data.role === "employer" ? "/employer" : "/candidate");

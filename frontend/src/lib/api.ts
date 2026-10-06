@@ -31,25 +31,41 @@ export function getRole(): Role | null {
   return localStorage.getItem("role") as Role | null;
 }
 
-export async function api<T>(
-  path: string,
-  options: RequestInit & { form?: boolean } = {},
-): Promise<T> {
+type ApiBody = BodyInit | Record<string, unknown> | null;
+
+type ApiOptions = Omit<RequestInit, "body"> & {
+  form?: boolean;
+  body?: ApiBody;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !(value instanceof FormData) &&
+    !(value instanceof URLSearchParams) &&
+    !(value instanceof Blob) &&
+    !(value instanceof ArrayBuffer) &&
+    !ArrayBuffer.isView(value)
+  );
+}
+
+export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  let body = options.body;
-  if (options.form && body && typeof body === "object" && !(body instanceof FormData)) {
+  let body: BodyInit | undefined | null = options.body as BodyInit | null | undefined;
+  if (options.form && isPlainObject(options.body)) {
     const fd = new URLSearchParams();
-    for (const [k, v] of Object.entries(body as Record<string, string>)) {
-      fd.set(k, v);
+    for (const [k, v] of Object.entries(options.body)) {
+      fd.set(k, String(v ?? ""));
     }
     body = fd.toString();
     headers.set("Content-Type", "application/x-www-form-urlencoded");
-  } else if (body && !headers.has("Content-Type") && !(body instanceof FormData)) {
+  } else if (options.body != null && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
-    if (typeof body !== "string") body = JSON.stringify(body);
+    body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
   }
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers, body });
