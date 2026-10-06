@@ -115,17 +115,15 @@ docs/                 # доки механик (для Product)
 
 ## Preview на Vercel (фронт)
 
-Каждый push / PR → отдельная ссылка превью UI.
+**Публичная ссылка для команды (без логина):**  
+https://invite-match-daniel123912.vercel.app
 
-1. Открой [vercel.com/new](https://vercel.com/new) и импортируй репо `Daniel123912/invite-match`
-2. **Root Directory:** `frontend` (важно)
-3. Framework: Next.js (подхватится сам)
-4. Environment Variable:
-   - `NEXT_PUBLIC_API_URL` = URL бэкенда (пока можно оставить пустым / локальный API не откроется из браузера на Vercel)
-5. Deploy
+Альтернатива: https://invite-match-sooty.vercel.app
 
-После первого деплоя включи **Automatic deployments** для ветки `main` и Preview для PR — в каждом PR появится комментарий со ссылкой.
+Deployment Protection / Vercel Auth выключены — открывается в браузере у всех.
+
+Каждый push / PR → отдельная preview-ссылка в комментарии к PR (если репо подключено к проекту Vercel с Root Directory = `frontend`).
 
 Локально: скопируй `frontend/.env.example` → `frontend/.env.local`.
 
-CORS на бэкенде уже пускает `https://*.vercel.app`. Когда появится публичный API — пропиши его в `NEXT_PUBLIC_API_URL` в настройках Vercel и сделай Redeploy.
+CORS на бэкенде уже пускает `https://*.vercel.app`. Когда появится публичный API — пропиши `NEXT_PUBLIC_API_URL` в настройках Vercel и сделай Redeploy. До тех пор на preview работает UI, а логин/API — только с локальным бэкендом.
