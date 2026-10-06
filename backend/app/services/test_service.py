@@ -1,0 +1,128 @@
+import json
+import random
+from datetime import datetime, timedelta, timezone
+
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.models import (
+    Candidate,
+    Category,
+    GradeLevel,
+    TestAttempt,
+    TestQuestion,
+)
+
+settings = get_settings()
+PASS_THRESHOLD = 0.6
+
+
+def start_test(db: Session, candidate: Candidate) -> TestAttempt:
+    if not candidate.specialization or not candidate.selected_grade:
+        raise HTTPException(400, "Сначала пройдите опрос (отрасль, специализация, грейд)")
+
+    if candidate.last_grade_change_at:
+        cooldown = timedelta(days=settings.grade_change_cooldown_days)
+        elapsed = datetime.now(timezone.utc) - candidate.last_grade_change_at.replace(tzinfo=timezone.utc)
+        if elapsed < cooldown and candidate.confirmed_grade:
+            days_left = (cooldown - elapsed).days + 1
+            raise HTTPException(
+                400,
+                f"Смена грейда доступна через {days_left} дн. (лимит {settings.grade_change_cooldown_days} дн.)",
+            )
+
+    category = (
+        db.query(Category)
+        .filter(
+            Category.specialization == candidate.specialization,
+            Category.grade == candidate.selected_grade,
+        )
+        .first()
+    )
+    if not category:
+        raise HTTPException(404, "Категория не найдена")
+
+    questions = db.query(TestQuestion).filter(TestQuestion.category_id == category.id).all()
+    if not questions:
+        raise HTTPException(404, "Нет заданий для этой категории")
+
+    # Anti-leak: pick a random variant group, then take up to 5 questions from it
+    groups = list({q.variant_group for q in questions})
+    variant = random.choice(groups)
+    pool = [q for q in questions if q.variant_group == variant]
+    selected = random.sample(pool, min(5, len(pool)))
+
+    attempt = TestAttempt(
+        candidate_id=candidate.id,
+        category_id=category.id,
+        variant_group=variant,
+        question_ids_json=json.dumps([q.id for q in selected]),
+    )
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+    return attempt
+
+
+def get_attempt_questions(db: Session, attempt: TestAttempt) -> list[TestQuestion]:
+    ids = json.loads(attempt.question_ids_json)
+    questions = db.query(TestQuestion).filter(TestQuestion.id.in_(ids)).all()
+    by_id = {q.id: q for q in questions}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def submit_test(
+    db: Session,
+    candidate: Candidate,
+    attempt_id: int,
+    answers: dict[int, int],
+) -> TestAttempt:
+    attempt = (
+        db.query(TestAttempt)
+        .filter(TestAttempt.id == attempt_id, TestAttempt.candidate_id == candidate.id)
+        .first()
+    )
+    if not attempt:
+        raise HTTPException(404, "Попытка не найдена")
+    if attempt.finished_at:
+        raise HTTPException(400, "Тест уже сдан")
+
+    questions = get_attempt_questions(db, attempt)
+    if not questions:
+        raise HTTPException(400, "Нет вопросов в попытке")
+
+    correct = 0
+    for q in questions:
+        if answers.get(q.id) == q.correct_index:
+            correct += 1
+
+    score = correct / len(questions)
+    passed = score >= PASS_THRESHOLD
+
+    attempt.answers_json = json.dumps({str(k): v for k, v in answers.items()})
+    attempt.score = round(score * 100, 1)
+    attempt.passed = passed
+    attempt.finished_at = datetime.now(timezone.utc)
+
+    candidate.test_score = attempt.score
+    if passed:
+        candidate.confirmed_grade = candidate.selected_grade
+        candidate.category_id = attempt.category_id
+        candidate.last_grade_change_at = datetime.now(timezone.utc)
+    else:
+        # Failed: keep previous category if any; do not force downgrade
+        candidate.confirmed_grade = candidate.confirmed_grade
+
+    db.commit()
+    db.refresh(attempt)
+    return attempt
+
+
+def grade_label(g: GradeLevel | None) -> str:
+    mapping = {
+        GradeLevel.JUNIOR: "Junior",
+        GradeLevel.MIDDLE: "Middle",
+        GradeLevel.SENIOR: "Senior",
+    }
+    return mapping.get(g, "—") if g else "—"
