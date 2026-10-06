@@ -112,3 +112,20 @@ docs/                 # доки механик (для Product)
 5. Frontend работодатель + Docker  
 
 Код-скелет уже разложен по этим контурам — можно сразу дописывать.
+
+## Preview на Vercel (фронт)
+
+Каждый push / PR → отдельная ссылка превью UI.
+
+1. Открой [vercel.com/new](https://vercel.com/new) и импортируй репо `Daniel123912/invite-match`
+2. **Root Directory:** `frontend` (важно)
+3. Framework: Next.js (подхватится сам)
+4. Environment Variable:
+   - `NEXT_PUBLIC_API_URL` = URL бэкенда (пока можно оставить пустым / локальный API не откроется из браузера на Vercel)
+5. Deploy
+
+После первого деплоя включи **Automatic deployments** для ветки `main` и Preview для PR — в каждом PR появится комментарий со ссылкой.
+
+Локально: скопируй `frontend/.env.example` → `frontend/.env.local`.
+
+CORS на бэкенде уже пускает `https://*.vercel.app`. Когда появится публичный API — пропиши его в `NEXT_PUBLIC_API_URL` в настройках Vercel и сделай Redeploy.
