@@ -35,49 +35,64 @@ export default function SurveyPage() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="panel mx-auto max-w-lg space-y-4">
-      <h2 className="text-xl font-bold">Опрос перед тестом</h2>
-      <p className="muted text-sm">
-        Грейд выбираете сами — тест подтвердит или нет. Категория = специализация × грейд.
-      </p>
-      <div className="field">
-        <label>Отрасль</label>
-        <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-          <option value="it">IT</option>
-          <option value="fintech">Fintech</option>
-          <option value="ecommerce">E-commerce</option>
-          <option value="edtech">EdTech</option>
-          <option value="healthtech">HealthTech</option>
-          <option value="other">Другое</option>
-        </select>
+    <div className="grid gap-4">
+      <div>
+        <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+          Опрос перед тестом
+        </h2>
+        <p className="muted mt-1 text-sm">
+          Грейд выбираете сами — тест подтвердит или нет. Категория = специализация × грейд.
+        </p>
       </div>
-      <div className="field">
-        <label>Специализация</label>
-        <select value={specialization} onChange={(e) => setSpecialization(e.target.value)}>
-          <option value="backend">Backend</option>
-          <option value="frontend">Frontend</option>
-          <option value="fullstack">Fullstack</option>
-          <option value="devops">DevOps</option>
-          <option value="data">Data</option>
-          <option value="qa">QA</option>
-          <option value="mobile">Mobile</option>
-        </select>
-      </div>
-      <div className="field">
-        <label>Целевой грейд</label>
-        <select value={grade} onChange={(e) => setGrade(e.target.value)}>
-          <option value="junior">Junior</option>
-          <option value="middle">Middle</option>
-          <option value="senior">Senior</option>
-        </select>
-      </div>
-      {error && <p className="text-[var(--danger)] text-sm">{error}</p>}
-      {(ok || pending) && (
-        <p className="text-[var(--ok)] text-sm">Сохранено — переходим к тесту…</p>
-      )}
-      <button className="btn btn-primary w-full" disabled={pending}>
-        {pending ? "Переход…" : "Сохранить и к тесту"}
-      </button>
-    </form>
+
+      <form onSubmit={onSubmit} className="panel mx-auto w-full max-w-xl space-y-4">
+        <div className="field">
+          <label>Отрасль</label>
+          <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
+            <option value="it">IT</option>
+            <option value="fintech">Fintech</option>
+            <option value="ecommerce">E-commerce</option>
+            <option value="edtech">EdTech</option>
+            <option value="healthtech">HealthTech</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Специализация</label>
+          <select value={specialization} onChange={(e) => setSpecialization(e.target.value)}>
+            <option value="backend">Backend</option>
+            <option value="frontend">Frontend</option>
+            <option value="fullstack">Fullstack</option>
+            <option value="devops">DevOps</option>
+            <option value="data">Data</option>
+            <option value="qa">QA</option>
+            <option value="mobile">Mobile</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Целевой грейд</label>
+          <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+            <option value="junior">Junior</option>
+            <option value="middle">Middle</option>
+            <option value="senior">Senior</option>
+          </select>
+        </div>
+
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] px-4 py-3 text-sm">
+          <p className="font-semibold">Выбрано</p>
+          <p className="muted mt-1">
+            {specialization} × {grade} · отрасль {industry}
+          </p>
+        </div>
+
+        {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
+        {(ok || pending) && (
+          <p className="text-sm font-semibold text-[var(--ok)]">Сохранено — переходим к тесту…</p>
+        )}
+        <button className="btn btn-primary w-full" disabled={pending}>
+          {pending ? "Переход…" : "Сохранить и к тесту"}
+        </button>
+      </form>
+    </div>
   );
 }
