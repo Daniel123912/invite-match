@@ -30,6 +30,7 @@ Thumbs.db
 
 # Docker / data
 pgdata/
+uploads/
 *.db
 *.log
 

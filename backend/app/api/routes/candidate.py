@@ -1,6 +1,9 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -21,10 +24,14 @@ from app.schemas import (
     TestStartResponse,
     TestSubmitRequest,
 )
-from app.services import test_service
+from app.services import resume_service, test_service
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 settings = get_settings()
+
+
+def _resume_upload_dir() -> Path:
+    return Path(settings.resume_upload_dir)
 
 
 def _get_candidate(user: User, db: Session) -> Candidate:
@@ -81,6 +88,94 @@ def update_profile(
             c.has_fsp_history = False
             c.fsp_score = 0.0
 
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+@router.post("/resume", response_model=CandidateOut)
+async def upload_resume(
+    file: UploadFile = File(...),
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    require_consent(c)
+
+    content_type, ext = resume_service.validate_resume_upload(file, settings.resume_max_bytes)
+    data = await resume_service.read_resume_bytes(file, settings.resume_max_bytes)
+    upload_dir = _resume_upload_dir()
+
+    resume_service.delete_resume_file(upload_dir, c.resume_storage_key)
+    storage_key = resume_service.save_resume_file(upload_dir, data, ext)
+    path = resume_service.resolve_resume_path(upload_dir, storage_key)
+
+    extracted = resume_service.extract_resume_text(path, content_type)
+    if extracted:
+        c.resume_text = extracted
+
+    original = (file.filename or f"resume{ext}").replace("\\", "/").split("/")[-1]
+    c.resume_file_name = original[:255]
+    c.resume_content_type = content_type
+    c.resume_storage_key = storage_key
+
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+@router.get("/resume/file")
+def download_resume_file(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    if not c.resume_storage_key:
+        raise HTTPException(404, "Резюме не загружено")
+
+    path = resume_service.resolve_resume_path(_resume_upload_dir(), c.resume_storage_key)
+    media_type = c.resume_content_type or "application/octet-stream"
+    filename = c.resume_file_name or path.name
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/resume/preview")
+def preview_resume(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    if not c.resume_storage_key:
+        raise HTTPException(404, "Резюме не загружено")
+
+    path = resume_service.resolve_resume_path(_resume_upload_dir(), c.resume_storage_key)
+    content_type = c.resume_content_type or ""
+
+    if content_type == "application/pdf":
+        raise HTTPException(400, "Для PDF используйте просмотр файла")
+
+    if content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return HTMLResponse(resume_service.docx_to_html(path))
+
+    raise HTTPException(400, "Предпросмотр недоступен для этого формата")
+
+
+@router.delete("/resume", response_model=CandidateOut)
+def delete_resume(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    require_consent(c)
+    resume_service.delete_resume_file(_resume_upload_dir(), c.resume_storage_key)
+    c.resume_file_name = None
+    c.resume_content_type = None
+    c.resume_storage_key = None
     db.commit()
     db.refresh(c)
     return c

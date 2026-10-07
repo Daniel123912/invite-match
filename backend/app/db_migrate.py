@@ -14,6 +14,9 @@ def ensure_columns() -> None:
         ("employers", "consent_152fz", bool_default),
         ("employers", "consent_152fz_at", "TIMESTAMP"),
         ("invitations", "contacts_revoked", bool_default),
+        ("candidates", "resume_file_name", "VARCHAR(255)"),
+        ("candidates", "resume_content_type", "VARCHAR(120)"),
+        ("candidates", "resume_storage_key", "VARCHAR(80)"),
     ]
 
     with engine.begin() as conn:

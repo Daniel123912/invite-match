@@ -102,6 +102,8 @@ class CandidateOut(BaseModel):
     city: Optional[str] = None
     about: Optional[str] = None
     resume_text: Optional[str] = None
+    resume_file_name: Optional[str] = None
+    resume_content_type: Optional[str] = None
     stack: Optional[str] = None
     industry: Optional[Industry] = None
     specialization: Optional[Specialization] = None

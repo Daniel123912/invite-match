@@ -19,10 +19,16 @@ class Settings(BaseSettings):
     # Grade change cooldown (days)
     grade_change_cooldown_days: int = 90
 
-    # CORS (точный список через запятую)
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # CORS (точный список через запятую) — 3001 если Next занял другой порт
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:3001,http://127.0.0.1:3001"
+    )
     # Preview-деплои Vercel: https://*.vercel.app
     cors_origin_regex: str = r"https://.*\.vercel\.app"
+
+    resume_upload_dir: str = "uploads/resumes"
+    resume_max_bytes: int = 5 * 1024 * 1024
 
 
 @lru_cache
