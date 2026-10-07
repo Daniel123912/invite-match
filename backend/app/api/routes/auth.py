@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -15,6 +17,12 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if body.role == UserRole.ADMIN:
         raise HTTPException(400, "Cannot register as admin")
 
+    if not body.consent_152fz:
+        raise HTTPException(
+            400,
+            "Для регистрации нужно согласие на обработку персональных данных (152-ФЗ)",
+        )
+
     existing = db.query(User).filter(User.email == body.email.lower()).first()
     if existing:
         raise HTTPException(400, "Email уже зарегистрирован")
@@ -27,10 +35,26 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.flush()
 
+    now = datetime.now(timezone.utc)
     if body.role == UserRole.CANDIDATE:
-        db.add(Candidate(user_id=user.id, full_name=body.full_name))
+        db.add(
+            Candidate(
+                user_id=user.id,
+                full_name=body.full_name,
+                consent_152fz=True,
+                consent_152fz_at=now,
+                privacy_public=True,
+            )
+        )
     elif body.role == UserRole.EMPLOYER:
-        db.add(Employer(user_id=user.id, full_name=body.full_name))
+        db.add(
+            Employer(
+                user_id=user.id,
+                full_name=body.full_name,
+                consent_152fz=True,
+                consent_152fz_at=now,
+            )
+        )
 
     db.commit()
     db.refresh(user)

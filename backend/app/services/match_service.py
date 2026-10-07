@@ -46,6 +46,8 @@ def match_candidates(
         Candidate.category_id == category.id,
         Candidate.confirmed_grade.isnot(None),
         Candidate.privacy_public.is_(True),
+        # 152-ФЗ: в подборку только с согласием на обработку ПДн
+        Candidate.consent_152fz.is_(True),
     )
     if only_with_fsp is True:
         q = q.filter(Candidate.has_fsp_history.is_(True))
