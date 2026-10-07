@@ -23,36 +23,51 @@ export default function ProfilePage() {
   const [form, setForm] = useState<Profile | null>(null);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api<Profile>("/api/candidate/profile").then(setForm).catch((e) => setError(e.message));
   }, []);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!form) return;
+  async function save(next: Profile) {
     setMsg("");
     setError("");
+    setSaving(true);
     try {
       const updated = await api<Profile>("/api/candidate/profile", {
         method: "PATCH",
-        body: JSON.stringify(form),
+        body: next,
       });
       setForm(updated);
       setMsg("Сохранено");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setSaving(false);
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!form) return;
+    await save(form);
   }
 
   if (!form) return <p className="muted">Загрузка…</p>;
 
   function set<K extends keyof Profile>(key: K, value: Profile[K]) {
-    setForm((f) => (f ? { ...f, [key]: value } : f));
+    setForm((f) => {
+      if (!f) return f;
+      const next = { ...f, [key]: value };
+      if (key === "consent_152fz" || key === "privacy_public") {
+        void save(next);
+      }
+      return next;
+    });
   }
 
   return (
-    <form onSubmit={onSubmit} className="panel grid gap-4 md:grid-cols-2">
+    <form onSubmit={onSubmit} className="panel grid gap-4 md:col-span-2 md:grid-cols-2">
       <div className="field">
         <label>ФИО</label>
         <input value={form.full_name || ""} onChange={(e) => set("full_name", e.target.value)} />
@@ -125,7 +140,9 @@ export default function ProfilePage() {
       </div>
       {msg && <p className="text-[var(--ok)] md:col-span-2">{msg}</p>}
       {error && <p className="text-[var(--danger)] md:col-span-2">{error}</p>}
-      <button className="btn btn-primary md:col-span-2">Сохранить</button>
+      <button className="btn btn-primary md:col-span-2" disabled={saving}>
+        {saving ? "Сохраняем…" : "Сохранить"}
+      </button>
     </form>
   );
 }
