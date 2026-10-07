@@ -145,3 +145,127 @@ button {
   background: #e8f1fb;
   color: var(--brand-dark);
 }
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cabinet-shell {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .cabinet-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.cabinet-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.cabinet-nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: 0.15s ease;
+}
+
+.cabinet-nav a:hover {
+  background: color-mix(in srgb, var(--brand) 8%, white);
+  color: var(--ink);
+}
+
+.cabinet-nav a.active {
+  background: color-mix(in srgb, var(--brand) 12%, white);
+  border-color: color-mix(in srgb, var(--brand) 28%, white);
+  color: var(--brand-dark);
+}
+
+.step-rail {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 700px) {
+  .step-rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.step-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 132px;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.step-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 28, 46, 0.06);
+}
+
+.step-card.done {
+  background: linear-gradient(180deg, #f4faf7 0%, #ffffff 70%);
+}
+
+.step-card.current {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
+  background: linear-gradient(180deg, #eef5fc 0%, #ffffff 65%);
+}
+
+.stat-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 700px) {
+  .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1.5rem;
+}
+
+.status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+.status-dot.ok {
+  background: var(--ok);
+}
+
+.status-dot.warn {
+  background: var(--warn);
+}
+
+.status-dot.brand {
+  background: var(--brand);
+}
