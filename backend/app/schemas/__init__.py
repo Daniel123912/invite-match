@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import (
     GradeLevel,
@@ -16,16 +16,45 @@ from app.models import (
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8, max_length=128)
     role: UserRole
-    full_name: str = ""
+    full_name: str = Field(min_length=2, max_length=255)
     # Обязательное согласие на обработку ПДн (152-ФЗ)
     consent_152fz: bool = False
+
+    @field_validator("full_name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Укажите имя (минимум 2 символа)")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Пароль не короче 8 символов")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Пароль должен содержать букву")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Пароль должен содержать цифру")
+        return v
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class EmailCheckRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailCheckResponse(BaseModel):
+    email: EmailStr
+    available: bool
+    message: str
 
 
 class TokenResponse(BaseModel):
