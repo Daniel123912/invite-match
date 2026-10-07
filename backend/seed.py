@@ -8,8 +8,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from datetime import datetime, timezone
+
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
+from app.db_migrate import ensure_columns
 from app.models import (
     Candidate,
     Category,
@@ -323,6 +326,8 @@ QUESTIONS_BY_CAT = {
 
 def seed() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_columns()
+    consent_at = datetime.now(timezone.utc)
     db = SessionLocal()
     try:
         if db.query(Category).count() > 0:
@@ -385,7 +390,13 @@ def seed() -> None:
         )
         db.add(company)
         db.flush()
-        employer = Employer(user_id=emp_user.id, full_name="Анна Работодатель", company_id=company.id)
+        employer = Employer(
+            user_id=emp_user.id,
+            full_name="Анна Работодатель",
+            company_id=company.id,
+            consent_152fz=True,
+            consent_152fz_at=consent_at,
+        )
         db.add(employer)
         db.flush()
         db.add(
@@ -439,6 +450,7 @@ def seed() -> None:
                     has_fsp_history=has_fsp,
                     privacy_public=True,
                     consent_152fz=True,
+                    consent_152fz_at=consent_at,
                     phone="+79001112233" if email == "candidate@demo.ru" else None,
                     telegram="@demo_cand" if email == "candidate@demo.ru" else None,
                 )
@@ -457,6 +469,7 @@ def seed() -> None:
                 user_id=fresh.id,
                 full_name="Новый Кандидат",
                 consent_152fz=True,
+                consent_152fz_at=consent_at,
             )
         )
 

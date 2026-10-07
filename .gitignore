@@ -38,3 +38,7 @@ coverage/
 .turbo/
 _extract_docx.py
 _plan_extract.txt
+
+*.db.bak
+fsp_talent_db.backup
+

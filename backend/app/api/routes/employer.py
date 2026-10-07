@@ -27,6 +27,7 @@ from app.schemas import (
     NeedCreate,
     NeedOut,
 )
+from app.core.privacy import can_reveal_contacts
 from app.services import match_service
 
 router = APIRouter(prefix="/employer", tags=["employer"])
@@ -213,7 +214,7 @@ def list_outgoing(
             .filter(Candidate.id == inv.candidate_id)
             .first()
         )
-        reveal = inv.status == InvitationStatus.ACCEPTED
+        reveal = can_reveal_contacts(inv, cand)
         result.append(_invitation_out(inv, company_name=company_name, candidate=cand, reveal=reveal))
     return result
 

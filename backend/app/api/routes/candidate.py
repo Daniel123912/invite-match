@@ -3,14 +3,20 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, require_role
+from app.config import get_settings
+from app.core.privacy import apply_consent, require_consent
+from app.core.security import require_role
 from app.database import get_db
-from app.models import Candidate, Category, User, UserRole
+from app.models import Candidate, Category, Invitation, InvitationStatus, TestAttempt, User, UserRole
 from app.schemas import (
     CandidateOut,
     CandidateProfileUpdate,
+    CategoryResultOut,
+    ContactsRevokeRequest,
+    InvitationOut,
     QuestionOut,
     SurveyRequest,
+    TestAttemptOut,
     TestResultOut,
     TestStartResponse,
     TestSubmitRequest,
@@ -18,6 +24,7 @@ from app.schemas import (
 from app.services import test_service
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
+settings = get_settings()
 
 
 def _get_candidate(user: User, db: Session) -> Candidate:
@@ -42,7 +49,20 @@ def update_profile(
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+
+    # Согласие 152-ФЗ обрабатываем отдельно
+    if "consent_152fz" in data:
+        apply_consent(c, bool(data.pop("consent_152fz")))
+
+    contact_fields = {"phone", "telegram", "full_name", "city", "about", "resume_text"}
+    if contact_fields & data.keys():
+        require_consent(c)
+
+    if data.get("privacy_public") is True and not c.consent_152fz:
+        raise HTTPException(400, "Нельзя публиковать профиль без согласия 152-ФЗ")
+
+    for field, value in data.items():
         setattr(c, field, value)
 
     # Stub FSP link
@@ -73,6 +93,7 @@ def submit_survey(
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
+    require_consent(c)
     c.industry = body.industry
     c.specialization = body.specialization
     c.selected_grade = body.selected_grade
@@ -87,6 +108,7 @@ def start_test(
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
+    require_consent(c)
     attempt = test_service.start_test(db, c)
     questions = test_service.get_attempt_questions(db, attempt)
     category = db.query(Category).filter(Category.id == attempt.category_id).first()
@@ -115,6 +137,7 @@ def submit_test(
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
+    require_consent(c)
     attempt = test_service.submit_test(db, c, body.attempt_id, body.answers)
     category = db.query(Category).filter(Category.id == attempt.category_id).first()
     db.refresh(c)
@@ -126,4 +149,105 @@ def submit_test(
         confirmed_grade=c.confirmed_grade if attempt.passed else None,
         category_id=c.category_id if attempt.passed else None,
         category_title=category.title if category and attempt.passed else None,
+    )
+
+
+@router.get("/category", response_model=CategoryResultOut)
+def get_category(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """Текущая категория / грейд после теста (для экрана результата)."""
+    c = _get_candidate(user, db)
+    category = None
+    if c.category_id:
+        category = db.query(Category).filter(Category.id == c.category_id).first()
+
+    return CategoryResultOut(
+        category_id=c.category_id,
+        category_title=category.title if category else None,
+        specialization=c.specialization,
+        confirmed_grade=c.confirmed_grade,
+        test_score=c.test_score,
+        has_fsp_history=c.has_fsp_history,
+        fsp_score=c.fsp_score,
+        last_grade_change_at=c.last_grade_change_at,
+        cooldown_days=settings.grade_change_cooldown_days,
+    )
+
+
+@router.get("/test/history", response_model=list[TestAttemptOut])
+def test_history(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """История попыток теста (для экрана результата)."""
+    c = _get_candidate(user, db)
+    attempts = (
+        db.query(TestAttempt)
+        .filter(TestAttempt.candidate_id == c.id)
+        .order_by(TestAttempt.started_at.desc())
+        .all()
+    )
+    cat_ids = {a.category_id for a in attempts}
+    titles = {
+        cat.id: cat.title
+        for cat in db.query(Category).filter(Category.id.in_(cat_ids)).all()
+    } if cat_ids else {}
+
+    return [
+        TestAttemptOut(
+            id=a.id,
+            category_id=a.category_id,
+            category_title=titles.get(a.category_id),
+            variant_group=a.variant_group,
+            score=a.score,
+            passed=a.passed,
+            started_at=a.started_at,
+            finished_at=a.finished_at,
+        )
+        for a in attempts
+    ]
+
+
+@router.patch("/invitations/{invitation_id}/contacts", response_model=InvitationOut)
+def revoke_contacts(
+    invitation_id: int,
+    body: ContactsRevokeRequest,
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """Отозвать / вернуть доступ работодателя к контактам после accept (152-ФЗ)."""
+    c = _get_candidate(user, db)
+    inv = (
+        db.query(Invitation)
+        .filter(Invitation.id == invitation_id, Invitation.candidate_id == c.id)
+        .first()
+    )
+    if not inv:
+        raise HTTPException(404, "Приглашение не найдено")
+    if inv.status != InvitationStatus.ACCEPTED:
+        raise HTTPException(400, "Отзыв контактов доступен только после принятия приглашения")
+
+    inv.contacts_revoked = bool(body.revoke)
+    db.commit()
+    db.refresh(inv)
+
+    from app.models import Employer
+
+    emp = db.query(Employer).filter(Employer.id == inv.employer_id).first()
+    company_name = emp.company.name if emp and emp.company else None
+    return InvitationOut(
+        id=inv.id,
+        employer_id=inv.employer_id,
+        candidate_id=inv.candidate_id,
+        need_id=inv.need_id,
+        message=inv.message,
+        salary_from=inv.salary_from,
+        salary_to=inv.salary_to,
+        status=inv.status,
+        reason=inv.reason,
+        created_at=inv.created_at,
+        company_name=company_name,
+        candidate_name=c.full_name,
     )

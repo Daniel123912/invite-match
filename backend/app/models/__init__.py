@@ -100,6 +100,7 @@ class Candidate(Base):
 
     privacy_public: Mapped[bool] = mapped_column(Boolean, default=True)
     consent_152fz: Mapped[bool] = mapped_column(Boolean, default=False)
+    consent_152fz_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_grade_change_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="candidate")
@@ -115,6 +116,9 @@ class Employer(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
     full_name: Mapped[str] = mapped_column(String(255), default="")
     company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    # Согласие на обработку ПДн кандидатов в рамках приглашений (152-ФЗ)
+    consent_152fz: Mapped[bool] = mapped_column(Boolean, default=False)
+    consent_152fz_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="employer")
     company: Mapped[Optional["Company"]] = relationship(back_populates="employers")
@@ -216,6 +220,8 @@ class Invitation(Base):
         Enum(InvitationStatus), default=InvitationStatus.SENT
     )
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # why in shortlist
+    # Кандидат отозвал доступ к контактам после accept (плюс к 152-ФЗ)
+    contacts_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

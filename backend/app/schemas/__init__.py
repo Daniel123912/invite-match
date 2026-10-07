@@ -19,6 +19,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=6)
     role: UserRole
     full_name: str = ""
+    # Обязательное согласие на обработку ПДн (152-ФЗ)
+    consent_152fz: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -83,6 +85,7 @@ class CandidateOut(BaseModel):
     has_fsp_history: bool = False
     privacy_public: bool = True
     consent_152fz: bool = False
+    consent_152fz_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -134,6 +137,33 @@ class TestResultOut(BaseModel):
     confirmed_grade: Optional[GradeLevel] = None
     category_id: Optional[int] = None
     category_title: Optional[str] = None
+
+
+class CategoryResultOut(BaseModel):
+    """Текущая категория кандидата после успешного теста."""
+
+    category_id: Optional[int] = None
+    category_title: Optional[str] = None
+    specialization: Optional[Specialization] = None
+    confirmed_grade: Optional[GradeLevel] = None
+    test_score: Optional[float] = None
+    has_fsp_history: bool = False
+    fsp_score: float = 0.0
+    last_grade_change_at: Optional[datetime] = None
+    cooldown_days: int = 90
+
+
+class TestAttemptOut(BaseModel):
+    id: int
+    category_id: int
+    category_title: Optional[str] = None
+    variant_group: str
+    score: Optional[float] = None
+    passed: Optional[bool] = None
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
 
 
 # ── Employer / Company ────────────────────────────────
@@ -214,6 +244,12 @@ class InvitationOut(BaseModel):
 
 class InvitationStatusUpdate(BaseModel):
     status: InvitationStatus
+
+
+class ContactsRevokeRequest(BaseModel):
+    """Отозвать доступ работодателя к контактам после accept."""
+
+    revoke: bool = True
 
 
 class CategoryOut(BaseModel):
