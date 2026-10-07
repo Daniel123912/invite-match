@@ -14,6 +14,7 @@ interface Profile {
   fsp_id?: string;
   privacy_public: boolean;
   consent_152fz: boolean;
+  consent_152fz_at?: string | null;
   has_fsp_history: boolean;
   fsp_score: number;
 }
@@ -109,6 +110,15 @@ export default function ProfilePage() {
           />
           Согласие на обработку ПДн (152-ФЗ)
         </label>
+        {form.consent_152fz_at ? (
+          <p className="muted text-xs">
+            Согласие от: {new Date(form.consent_152fz_at).toLocaleString("ru-RU")}
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--danger)]">
+            Без согласия профиль не попадёт в подборку, опрос и тест недоступны
+          </p>
+        )}
         <p className="muted">
           ФСП: {form.has_fsp_history ? `${form.fsp_score} баллов` : "истории нет"}
         </p>
