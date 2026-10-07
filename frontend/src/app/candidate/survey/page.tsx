@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -11,6 +11,7 @@ export default function SurveyPage() {
   const [grade, setGrade] = useState("junior");
   const [error, setError] = useState("");
   const [ok, setOk] = useState(false);
+  const [pending, startTransition] = useTransition();
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -18,14 +19,16 @@ export default function SurveyPage() {
     try {
       await api("/api/candidate/survey", {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           industry,
           specialization,
           selected_grade: grade,
-        }),
+        },
       });
       setOk(true);
-      setTimeout(() => router.push("/candidate/test"), 800);
+      startTransition(() => {
+        router.push("/candidate/test");
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     }
@@ -69,8 +72,12 @@ export default function SurveyPage() {
         </select>
       </div>
       {error && <p className="text-[var(--danger)] text-sm">{error}</p>}
-      {ok && <p className="text-[var(--ok)] text-sm">Сохранено — переходим к тесту…</p>}
-      <button className="btn btn-primary w-full">Сохранить и к тесту</button>
+      {(ok || pending) && (
+        <p className="text-[var(--ok)] text-sm">Сохранено — переходим к тесту…</p>
+      )}
+      <button className="btn btn-primary w-full" disabled={pending}>
+        {pending ? "Переход…" : "Сохранить и к тесту"}
+      </button>
     </form>
   );
 }

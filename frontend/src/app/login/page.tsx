@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { api, setAuth, TokenResponse } from "@/lib/api";
 
 export default function LoginPage() {
@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("demo1234");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pending, startTransition] = useTransition();
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -23,7 +24,9 @@ export default function LoginPage() {
         body: { username: email, password },
       });
       setAuth(data);
-      router.push(data.role === "employer" ? "/employer" : "/candidate");
+      startTransition(() => {
+        router.push(data.role === "employer" ? "/employer" : "/candidate");
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {
@@ -54,8 +57,8 @@ export default function LoginPage() {
           />
         </div>
         {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-        <button className="btn btn-primary" disabled={loading}>
-          {loading ? "Входим…" : "Войти"}
+        <button className="btn btn-primary" disabled={loading || pending}>
+          {loading || pending ? "Входим…" : "Войти"}
         </button>
       </form>
       <p className="muted mt-4 text-sm">

@@ -8,9 +8,11 @@ Swagger: `http://localhost:8000/docs`
 
 | Метод | Путь | Тело | Ответ |
 |-------|------|------|-------|
-| POST | `/auth/register` | `{ email, password, role, full_name, consent_152fz: true }` | token + role |
+| GET | `/auth/check-email?email=` | — | `{ available, message }` без reload |
+| POST | `/auth/register` | `{ email, password (≥8, буква+цифра), role, full_name, consent_152fz: true }` | token + role |
 | POST | `/auth/login` | form: `username`=email, `password` | token + role |
 | GET | `/auth/me` | — | user |
+| GET | `/fsp/{fsp_id}/achievements` | — | заглушка достижений ФСП |
 
 `role`: `candidate` \| `employer`
 
