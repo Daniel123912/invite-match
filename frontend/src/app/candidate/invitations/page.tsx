@@ -41,6 +41,18 @@ export default function InvitationsPage() {
     }
   }
 
+  async function revokeContacts(id: number) {
+    try {
+      await api(`/api/candidate/invitations/${id}/contacts`, {
+        method: "PATCH",
+        body: JSON.stringify({ revoke: true }),
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
+
   if (error) return <p className="text-[var(--danger)]">{error}</p>;
 
   if (!items.length) {
@@ -70,6 +82,14 @@ export default function InvitationsPage() {
               <button className="btn btn-danger" onClick={() => respond(inv.id, "declined")}>
                 Отклонить
               </button>
+            </div>
+          )}
+          {inv.status === "accepted" && (
+            <div className="mt-4">
+              <button className="btn btn-danger" onClick={() => revokeContacts(inv.id)}>
+                Отозвать доступ к контактам
+              </button>
+              <p className="muted mt-1 text-xs">По 152-ФЗ можно закрыть телефон/email для работодателя</p>
             </div>
           )}
         </div>

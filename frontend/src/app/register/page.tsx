@@ -11,17 +11,28 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"candidate" | "employer">("candidate");
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (!consent) {
+      setError("Нужно согласие на обработку персональных данных (152-ФЗ)");
+      return;
+    }
     setLoading(true);
     try {
       const data = await api<TokenResponse>("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, password, role, full_name: fullName }),
+        body: JSON.stringify({
+          email,
+          password,
+          role,
+          full_name: fullName,
+          consent_152fz: true,
+        }),
       });
       setAuth(data);
       router.push(data.role === "employer" ? "/employer" : "/candidate");
@@ -66,8 +77,21 @@ export default function RegisterPage() {
             <option value="employer">Работодатель</option>
           </select>
         </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            className="mt-1"
+            required
+          />
+          <span>
+            Даю согласие на обработку персональных данных в соответствии с 152-ФЗ.
+            Контакты кандидата открываются работодателю только после принятия приглашения.
+          </span>
+        </label>
         {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-        <button className="btn btn-primary" disabled={loading}>
+        <button className="btn btn-primary" disabled={loading || !consent}>
           {loading ? "Создаём…" : "Создать аккаунт"}
         </button>
       </form>
