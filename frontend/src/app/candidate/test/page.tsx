@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { API_URL, api, formatApiError } from "@/lib/api";
 
 interface Question {
   id: number;
@@ -16,6 +16,7 @@ interface StartResponse {
   variant_group: string;
   questions: Question[];
   category_title: string;
+  integrity_hint?: string;
 }
 
 interface Result {
@@ -23,6 +24,8 @@ interface Result {
   passed: boolean;
   confirmed_grade?: string;
   category_title?: string;
+  proctor_flagged?: boolean;
+  plagiarism_score?: number;
 }
 
 export default function TestPage() {
@@ -31,6 +34,34 @@ export default function TestPage() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!started) return;
+    const token = localStorage.getItem("token");
+    const send = (event: string) => {
+      fetch(`${API_URL}/api/candidate/test/${started.attempt_id}/proctor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ event }),
+      }).catch(() => {});
+    };
+    const onBlur = () => send("blur");
+    const onPaste = () => send("paste");
+    const onVis = () => {
+      if (document.visibilityState === "hidden") send("visibility");
+    };
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("paste", onPaste);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("paste", onPaste);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [started]);
 
   const answered = useMemo(
     () => (started ? started.questions.filter((q) => answers[q.id] !== undefined).length : 0),
@@ -46,7 +77,7 @@ export default function TestPage() {
       setStarted(data);
       setAnswers({});
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setError(formatApiError(err));
     } finally {
       setLoading(false);
     }
@@ -63,7 +94,7 @@ export default function TestPage() {
       });
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setError(formatApiError(err));
     } finally {
       setLoading(false);
     }
@@ -73,13 +104,13 @@ export default function TestPage() {
     return (
       <div className="grid gap-4">
         <div>
-          <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+          <h2 className="section-title text-xl">
             Результат теста
           </h2>
         </div>
         <div className="panel max-w-xl">
           <p className="muted text-sm">Итоговый балл</p>
-          <p className="mt-2 text-5xl font-bold tracking-tight" style={{ fontFamily: "var(--font-sora)" }}>
+          <p className="font-display mt-2 text-5xl font-bold tracking-tight">
             {result.score}%
           </p>
           <div className="mt-4 rounded-xl border border-[var(--line)] px-4 py-3 text-sm">
@@ -90,6 +121,14 @@ export default function TestPage() {
             ) : (
               <p className="font-semibold text-[var(--warn)]">
                 Не пройден порог 60%. Грейд не понижен принудительно — можно пересдать позже.
+              </p>
+            )}
+            {result.proctor_flagged && (
+              <p className="mt-2 text-xs text-[var(--danger)]">Прокторинг: подозрительная активность</p>
+            )}
+            {result.plagiarism_score != null && result.plagiarism_score >= 0.85 && (
+              <p className="mt-2 text-xs text-[var(--danger)]">
+                Антиплагиат: совпадение ответов {Math.round(result.plagiarism_score * 100)}%
               </p>
             )}
           </div>
@@ -111,7 +150,7 @@ export default function TestPage() {
     return (
       <div className="grid gap-4">
         <div>
-          <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+          <h2 className="section-title text-xl">
             Тест на категорию
           </h2>
           <p className="muted mt-1 text-sm">
@@ -140,12 +179,15 @@ export default function TestPage() {
     <div className="space-y-4">
       <div className="panel sticky top-3 z-10 flex flex-wrap items-center justify-between gap-3 !py-3 backdrop-blur">
         <div>
-          <h2 className="text-lg font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+          <h2 className="section-title text-lg">
             {started.category_title}
           </h2>
           <p className="muted text-sm">
             Вариант {started.variant_group} · отвечено {answered}/{total}
           </p>
+          {started.integrity_hint && (
+            <p className="muted text-xs">{started.integrity_hint}</p>
+          )}
         </div>
         <button className="btn btn-primary" onClick={submit} disabled={loading || answered < total}>
           {loading ? "Отправка…" : "Сдать тест"}

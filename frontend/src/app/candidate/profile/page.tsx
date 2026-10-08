@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { api, apiFetch } from "@/lib/api";
+import { api, apiFetch, formatApiError } from "@/lib/api";
 
 interface Profile {
   full_name: string;
@@ -19,6 +19,8 @@ interface Profile {
   consent_152fz_at?: string | null;
   has_fsp_history: boolean;
   fsp_score: number;
+  birth_date?: string | null;
+  parental_consent?: boolean;
 }
 
 function isPdfResume(mime?: string | null) {
@@ -64,7 +66,7 @@ export default function ProfilePage() {
       setForm(updated);
       setMsg("Сохранено");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setError(formatApiError(err));
     } finally {
       setSaving(false);
     }
@@ -92,7 +94,7 @@ export default function ProfilePage() {
       setMsg("Резюме загружено");
       closePreview();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка загрузки");
+      setError(formatApiError(err, "Ошибка загрузки"));
     } finally {
       setUploading(false);
     }
@@ -123,7 +125,7 @@ export default function ProfilePage() {
       }
     } catch (err) {
       setPreviewOpen(false);
-      setError(err instanceof Error ? err.message : "Не удалось открыть файл");
+      setError(formatApiError(err, "Не удалось открыть файл"));
     }
   }
 
@@ -137,7 +139,7 @@ export default function ProfilePage() {
       closePreview();
       setMsg("Файл резюме удалён");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setError(formatApiError(err));
     } finally {
       setUploading(false);
     }
@@ -176,7 +178,7 @@ export default function ProfilePage() {
   return (
     <>
       <div className="mb-4">
-        <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+        <h2 className="section-title text-xl">
           Профиль
         </h2>
         <p className="muted mt-1 text-sm">
@@ -266,6 +268,29 @@ export default function ProfilePage() {
               onChange={(e) => set("resume_text", e.target.value)}
             />
           </div>
+        </section>
+
+        <section className="panel grid gap-4 md:grid-cols-2">
+          <h3 className="md:col-span-2 text-sm font-bold uppercase tracking-wide text-[var(--muted)]">
+            Возраст (16–17)
+          </h3>
+          <div className="field">
+            <label>Дата рождения</label>
+            <input
+              type="date"
+              value={form.birth_date?.slice(0, 10) || ""}
+              onChange={(e) => set("birth_date", e.target.value || null)}
+            />
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Boolean(form.parental_consent)}
+              onChange={(e) => set("parental_consent", e.target.checked)}
+            />
+            <span>Согласие родителей на обработку ПДн</span>
+          </label>
         </section>
 
         <section className="panel grid gap-4 md:grid-cols-2">
