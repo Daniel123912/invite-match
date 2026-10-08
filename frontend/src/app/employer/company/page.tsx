@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
+import { INDUSTRIES } from "@/lib/labels";
 
 interface Company {
   id?: number;
@@ -10,6 +12,8 @@ interface Company {
   website?: string;
   industry?: string;
   city?: string;
+  verified?: boolean;
+  verification_note?: string;
 }
 
 export default function CompanyPage() {
@@ -22,33 +26,58 @@ export default function CompanyPage() {
   });
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api<Company | null>("/api/employer/company")
       .then((c) => {
         if (c) setForm(c);
       })
-      .catch(() => undefined);
+      .catch((e) => setError(formatApiError(e, "Не удалось загрузить компанию")))
+      .finally(() => setLoading(false));
   }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setMsg("");
     try {
       const saved = await api<Company>("/api/employer/company", {
         method: "PUT",
-        body: JSON.stringify(form),
+        body: form,
       });
       setForm(saved);
       setMsg("Сохранено");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setError(formatApiError(err));
     }
+  }
+
+  async function requestVerify() {
+    setError("");
+    setMsg("");
+    try {
+      await api("/api/employer/company/verify-request", { method: "POST" });
+      setMsg("Заявка на верификацию отправлена");
+    } catch (err) {
+      setError(formatApiError(err));
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="panel empty-state">
+        <p className="muted">Загрузка…</p>
+      </div>
+    );
   }
 
   return (
     <form onSubmit={onSubmit} className="panel grid max-w-2xl gap-4">
-      <h2 className="text-xl font-bold">Профиль компании</h2>
+      <div>
+        <h2 className="section-title text-xl">Профиль компании</h2>
+        <p className="muted mt-1 text-sm">Нужен, чтобы отправлять приглашения кандидатам</p>
+      </div>
       <div className="field">
         <label>Название</label>
         <input
@@ -72,16 +101,40 @@ export default function CompanyPage() {
         />
       </div>
       <div className="field">
+        <label>Отрасль</label>
+        <select
+          value={form.industry || "it"}
+          onChange={(e) => setForm({ ...form, industry: e.target.value })}
+        >
+          {INDUSTRIES.map((i) => (
+            <option key={i.value} value={i.value}>
+              {i.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
         <label>Описание</label>
         <textarea
           rows={4}
           value={form.description || ""}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
+          placeholder="Чем занимается компания (желательно для приглашений)"
         />
       </div>
-      {msg && <p className="text-[var(--ok)]">{msg}</p>}
-      {error && <p className="text-[var(--danger)]">{error}</p>}
-      <button className="btn btn-primary">Сохранить</button>
+      {form.verified && <p className="text-sm font-semibold text-[var(--ok)]">Компания верифицирована</p>}
+      {form.verification_note && <p className="muted text-xs">{form.verification_note}</p>}
+      <button type="button" className="btn btn-ghost w-fit" onClick={requestVerify}>
+        Запросить проверку компании
+      </button>
+      {msg && <p className="text-sm font-semibold text-[var(--ok)]">{msg}</p>}
+      {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-primary">Сохранить</button>
+        <Link href="/employer/needs" className="btn btn-ghost">
+          Далее: потребность →
+        </Link>
+      </div>
     </form>
   );
 }
