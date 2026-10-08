@@ -22,9 +22,29 @@ docker compose up --build
 - API / Swagger: http://localhost:8000/docs  
 - Health: http://localhost:8000/health  
 
-## Локальная разработка (без Docker)
+## Локальная разработка (PostgreSQL + pgAdmin)
 
-По умолчанию используется **SQLite** (`backend/fsp_talent_db.db`) — можно стартовать сразу.
+БД — **локальный PostgreSQL** (через pgAdmin 4). Docker для БД не обязателен.
+
+### 0. База в pgAdmin
+
+1. Убедитесь, что служба PostgreSQL запущена (у вас может быть 16 или 18).
+2. Откройте pgAdmin → сервер → Query Tool под пользователем `postgres`.
+3. Выполните скрипт [`backend/scripts/init_pg.sql`](backend/scripts/init_pg.sql)  
+   (создаёт роль `fsp` / пароль `fsp` и БД `fsp_talent_db`).
+
+   Если `\gexec` в вашей версии pgAdmin не сработает, вручную:
+
+   ```sql
+   CREATE ROLE fsp LOGIN PASSWORD 'fsp';
+   CREATE DATABASE fsp_talent_db OWNER fsp;
+   ```
+
+4. В `backend/.env` должен быть URL:
+
+   `DATABASE_URL=postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db`
+
+   Либо свой пользователь/пароль из pgAdmin — подставьте в URL.
 
 ### 1. Backend
 
@@ -51,8 +71,7 @@ npm install
 npm run dev
 ```
 
-Для Postgres: поднимите `docker compose up -d db` и в `backend/.env` поставьте  
-`DATABASE_URL=postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db`.
+Альтернатива: весь стек в Docker — `docker compose up --build` (там Postgres внутри Compose).
 
 ## Демо-аккаунты (после seed)
 
@@ -84,7 +103,7 @@ backend/app/          # FastAPI
 frontend/src/app/     # Next.js App Router
   candidate/          # кабинет кандидата
   employer/           # кабинет работодателя
-docs/                 # доки механик (для Product)
+docs/                 # полная документация для сдачи (см. docs/README.md)
 ```
 
 ## API (кратко)
@@ -98,10 +117,12 @@ docs/                 # доки механик (для Product)
 
 ## Механики MVP
 
-- **Тест:** банк A/B-вариантов (антислив), порог 60%, кулдаун смены грейда 90 дней, без принудительного понижения  
-- **Подбор:** ранг = `test_score × 0.7 + fsp_score × 0.3`, текст `reason`  
-- **Контакты:** скрыты до `accepted`  
+- **Тест:** банк A/B-вариантов (антислив), канонические вопросы в БД, порог 60%, кулдаун 90 дней, без принудительного понижения  
+- **Подбор:** ранг = `test_score × 0.7 + fsp_score × 0.3`, текст `reason`, неподтверждённый грейд виден, но ниже в выдаче  
+- **Контакты:** скрыты до `accepted`, можно отозвать после accept  
 - **ФСП:** заглушка achievements по `fsp_id`; кейс «истории нет» обработан  
+
+Подробно: [docs/README.md](docs/README.md)
 
 ## Кто что пилит (из ТЗ)
 
