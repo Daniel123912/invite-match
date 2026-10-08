@@ -40,6 +40,7 @@ def incoming(
                 created_at=inv.created_at,
                 company_name=company_name,
                 candidate_name=c.full_name,
+                contacts_revoked=bool(inv.contacts_revoked),
             )
         )
     return result
@@ -87,4 +88,5 @@ def update_status(
         created_at=inv.created_at,
         company_name=company_name,
         candidate_name=c.full_name,
+        contacts_revoked=bool(inv.contacts_revoked),
     )

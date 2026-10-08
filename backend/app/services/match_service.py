@@ -3,6 +3,10 @@
 from sqlalchemy.orm import Session
 
 from app.models import Candidate, Category, GradeLevel, Specialization
+from app.services.candidate_utils import candidate_specializations
+
+# Неподтверждённый грейд виден в выдаче, но ниже подтверждённых (Q&A жюри)
+UNCONFIRMED_RANK_FACTOR = 0.55
 
 
 def rank_score(candidate: Candidate) -> float:
@@ -13,8 +17,19 @@ def rank_score(candidate: Candidate) -> float:
     return round(test * 0.7 + fsp_norm * 0.3, 2)
 
 
-def build_reason(candidate: Candidate) -> str:
+def grade_confirmed_in_category(
+    candidate: Candidate, category: Category, grade: GradeLevel
+) -> bool:
+    return (
+        candidate.category_id == category.id
+        and candidate.confirmed_grade == grade
+    )
+
+
+def build_reason(candidate: Candidate, *, grade_confirmed: bool = True) -> str:
     parts = []
+    if not grade_confirmed:
+        parts.append("грейд не подтверждён тестом — ниже в выдаче")
     if candidate.test_score is not None:
         parts.append(f"тест {candidate.test_score:.0f}%")
     if candidate.has_fsp_history:
@@ -43,10 +58,7 @@ def match_candidates(
         return None, []
 
     q = db.query(Candidate).filter(
-        Candidate.category_id == category.id,
-        Candidate.confirmed_grade.isnot(None),
         Candidate.privacy_public.is_(True),
-        # 152-ФЗ: в подборку только с согласием на обработку ПДн
         Candidate.consent_152fz.is_(True),
     )
     if only_with_fsp is True:
@@ -54,17 +66,36 @@ def match_candidates(
     if only_with_fsp is False:
         q = q.filter(Candidate.has_fsp_history.is_(False))
 
-    candidates = q.all()
+    pool: list[tuple[Candidate, bool]] = []
+    for c in q.all():
+        specs = candidate_specializations(c)
+        if specialization not in specs:
+            continue
+        confirmed = grade_confirmed_in_category(c, category, grade)
+        unconfirmed = (
+            c.selected_grade == grade
+            and c.test_score is not None
+            and not confirmed
+        )
+        if confirmed or unconfirmed:
+            pool.append((c, confirmed))
 
     if stack_filter:
         needles = [s.strip().lower() for s in stack_filter.split(",") if s.strip()]
-        filtered = []
-        for c in candidates:
+        filtered: list[tuple[Candidate, bool]] = []
+        for c, confirmed in pool:
             hay = (c.stack or "").lower()
             if any(n in hay for n in needles):
-                filtered.append(c)
-        candidates = filtered
+                filtered.append((c, confirmed))
+        pool = filtered
 
-    ranked = [(c, rank_score(c), build_reason(c)) for c in candidates]
-    ranked.sort(key=lambda x: x[1], reverse=True)
-    return category, ranked[:limit]
+    ranked: list[tuple[Candidate, float, str, bool]] = []
+    for c, confirmed in pool:
+        score = rank_score(c)
+        if not confirmed:
+            score = round(score * UNCONFIRMED_RANK_FACTOR, 2)
+        ranked.append((c, score, build_reason(c, grade_confirmed=confirmed), confirmed))
+
+    ranked.sort(key=lambda x: (x[3], x[1]), reverse=True)  # confirmed first, then score
+    slim = [(c, score, reason) for c, score, reason, _ in ranked[:limit]]
+    return category, slim

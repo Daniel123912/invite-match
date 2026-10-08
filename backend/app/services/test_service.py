@@ -13,6 +13,7 @@ from app.models import (
     TestAttempt,
     TestQuestion,
 )
+from app.services.plagiarism_service import plagiarism_similarity
 
 settings = get_settings()
 PASS_THRESHOLD = 0.6
@@ -22,10 +23,21 @@ def start_test(db: Session, candidate: Candidate) -> TestAttempt:
     if not candidate.specialization or not candidate.selected_grade:
         raise HTTPException(400, "Сначала пройдите опрос (отрасль, специализация, грейд)")
 
-    if candidate.last_grade_change_at:
+    # Кулдаун только на смену грейда (пересдача того же грейда разрешена)
+    changing_grade = (
+        candidate.confirmed_grade is not None
+        and candidate.selected_grade is not None
+        and candidate.selected_grade != candidate.confirmed_grade
+    )
+    if changing_grade and candidate.last_grade_change_at:
         cooldown = timedelta(days=settings.grade_change_cooldown_days)
-        elapsed = datetime.now(timezone.utc) - candidate.last_grade_change_at.replace(tzinfo=timezone.utc)
-        if elapsed < cooldown and candidate.confirmed_grade:
+        last = candidate.last_grade_change_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        else:
+            last = last.astimezone(timezone.utc)
+        elapsed = datetime.now(timezone.utc) - last
+        if elapsed < cooldown:
             days_left = (cooldown - elapsed).days + 1
             raise HTTPException(
                 400,
@@ -104,6 +116,11 @@ def submit_test(
     attempt.score = round(score * 100, 1)
     attempt.passed = passed
     attempt.finished_at = datetime.now(timezone.utc)
+    attempt.plagiarism_score = plagiarism_similarity(db, attempt, answers)
+    if attempt.plagiarism_score >= 0.85:
+        attempt.proctor_flagged = True
+    if attempt.proctor_blur_count >= 5 or attempt.proctor_paste_count >= 2:
+        attempt.proctor_flagged = True
 
     candidate.test_score = attempt.score
     if passed:
@@ -114,6 +131,25 @@ def submit_test(
         # Failed: keep previous category if any; do not force downgrade
         candidate.confirmed_grade = candidate.confirmed_grade
 
+    db.commit()
+    db.refresh(attempt)
+    return attempt
+
+
+def record_proctor_event(db: Session, candidate: Candidate, attempt_id: int, event: str) -> TestAttempt:
+    attempt = (
+        db.query(TestAttempt)
+        .filter(TestAttempt.id == attempt_id, TestAttempt.candidate_id == candidate.id)
+        .first()
+    )
+    if not attempt or attempt.finished_at:
+        raise HTTPException(404, "Попытка не найдена или уже завершена")
+    if event in ("blur", "visibility"):
+        attempt.proctor_blur_count += 1
+    elif event == "paste":
+        attempt.proctor_paste_count += 1
+    if attempt.proctor_blur_count >= 5 or attempt.proctor_paste_count >= 2:
+        attempt.proctor_flagged = True
     db.commit()
     db.refresh(attempt)
     return attempt

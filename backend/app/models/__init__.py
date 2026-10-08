@@ -28,6 +28,18 @@ class UserRole(str, PyEnum):
     ADMIN = "admin"
 
 
+class EmployerTaskType(str, PyEnum):
+    MCQ = "mcq"
+    CODE = "code"
+    OPEN = "open"
+
+
+class TaskAssignmentStatus(str, PyEnum):
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    GRADED = "graded"
+
+
 class GradeLevel(str, PyEnum):
     JUNIOR = "junior"
     MIDDLE = "middle"
@@ -85,7 +97,13 @@ class Candidate(Base):
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resume_file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resume_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    resume_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     stack: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # comma-separated
+    birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    parental_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    specializations_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     industry: Mapped[Optional[Industry]] = mapped_column(Enum(Industry), nullable=True)
     specialization: Mapped[Optional[Specialization]] = mapped_column(Enum(Specialization), nullable=True)
@@ -107,6 +125,7 @@ class Candidate(Base):
     category: Mapped[Optional["Category"]] = relationship(back_populates="candidates")
     test_attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="candidate")
     invitations: Mapped[list["Invitation"]] = relationship(back_populates="candidate")
+    task_assignments: Mapped[list["TaskAssignment"]] = relationship(back_populates="candidate")
 
 
 class Employer(Base):
@@ -124,6 +143,7 @@ class Employer(Base):
     company: Mapped[Optional["Company"]] = relationship(back_populates="employers")
     needs: Mapped[list["EmployerNeed"]] = relationship(back_populates="employer")
     invitations: Mapped[list["Invitation"]] = relationship(back_populates="employer")
+    tasks: Mapped[list["EmployerTask"]] = relationship(back_populates="employer")
 
 
 class Company(Base):
@@ -135,6 +155,8 @@ class Company(Base):
     website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     industry: Mapped[Optional[Industry]] = mapped_column(Enum(Industry), nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    verification_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     employers: Mapped[list["Employer"]] = relationship(back_populates="company")
 
@@ -183,6 +205,10 @@ class TestAttempt(Base):
     passed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    proctor_blur_count: Mapped[int] = mapped_column(Integer, default=0)
+    proctor_paste_count: Mapped[int] = mapped_column(Integer, default=0)
+    proctor_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
+    plagiarism_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     candidate: Mapped["Candidate"] = relationship(back_populates="test_attempts")
 
@@ -201,6 +227,9 @@ class EmployerNeed(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     salary_from: Mapped[int] = mapped_column(Integer)
     salary_to: Mapped[int] = mapped_column(Integer)
+    salary_gross: Mapped[bool] = mapped_column(Boolean, default=True)
+    report_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     employer: Mapped["Employer"] = relationship(back_populates="needs")
@@ -227,6 +256,89 @@ class Invitation(Base):
 
     employer: Mapped["Employer"] = relationship(back_populates="invitations")
     candidate: Mapped["Candidate"] = relationship(back_populates="invitations")
+    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="invitation")
+    task_assignments: Mapped[list["TaskAssignment"]] = relationship(
+        back_populates="invitation", foreign_keys="TaskAssignment.invitation_id"
+    )
+
+
+class EmployerTask(Base):
+    __tablename__ = "employer_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employer_id: Mapped[int] = mapped_column(ForeignKey("employers.id"))
+    title: Mapped[str] = mapped_column(String(255))
+    task_type: Mapped[EmployerTaskType] = mapped_column(Enum(EmployerTaskType))
+    prompt: Mapped[str] = mapped_column(Text)
+    options_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    correct_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    expected_stdout: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    employer: Mapped["Employer"] = relationship(back_populates="tasks")
+    assignments: Mapped[list["TaskAssignment"]] = relationship(back_populates="task")
+
+
+class TaskAssignment(Base):
+    __tablename__ = "task_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("employer_tasks.id"))
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"))
+    invitation_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invitations.id"), nullable=True)
+    status: Mapped[TaskAssignmentStatus] = mapped_column(
+        Enum(TaskAssignmentStatus), default=TaskAssignmentStatus.PENDING
+    )
+    answer_mcq_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    answer_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    code_submitted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    task: Mapped["EmployerTask"] = relationship(back_populates="assignments")
+    candidate: Mapped["Candidate"] = relationship(back_populates="task_assignments")
+    invitation: Mapped[Optional["Invitation"]] = relationship(
+        back_populates="task_assignments", foreign_keys=[invitation_id]
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invitation_id: Mapped[int] = mapped_column(ForeignKey("invitations.id"), index=True)
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    invitation: Mapped["Invitation"] = relationship(back_populates="messages")
+
+
+class ChatReadCursor(Base):
+    """Курсор прочтения чата: последнее прочитанное сообщение пользователя в диалоге."""
+
+    __tablename__ = "chat_read_cursors"
+    __table_args__ = (
+        UniqueConstraint("user_id", "invitation_id", name="uq_chat_read_user_inv"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    invitation_id: Mapped[int] = mapped_column(ForeignKey("invitations.id"), index=True)
+    last_read_message_id: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class NeedReport(Base):
+    __tablename__ = "need_reports"
+    __table_args__ = (UniqueConstraint("need_id", "candidate_id", name="uq_need_report_once"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    need_id: Mapped[int] = mapped_column(ForeignKey("employer_needs.id"))
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class FspAchievement(Base):

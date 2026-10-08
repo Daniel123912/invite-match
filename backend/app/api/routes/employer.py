@@ -1,3 +1,6 @@
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
@@ -9,28 +12,38 @@ from app.models import (
     Company,
     Employer,
     EmployerNeed,
+    EmployerTask,
+    EmployerTaskType,
     GradeLevel,
     Invitation,
     InvitationStatus,
     Specialization,
+    TaskAssignment,
+    TaskAssignmentStatus,
     User,
     UserRole,
 )
 from app.schemas import (
+    AtsExportOut,
+    AtsWebhookIn,
     CandidatePublicOut,
     CategoryOut,
     CompanyOut,
     CompanyUpdate,
+    EmployerTaskCreate,
+    EmployerTaskOut,
     InvitationCreate,
     InvitationOut,
     MatchResponse,
     NeedCreate,
     NeedOut,
+    TaskAssignmentOut,
 )
 from app.core.privacy import can_reveal_contacts
 from app.services import match_service
 
 router = APIRouter(prefix="/employer", tags=["employer"])
+logger = logging.getLogger("fsp.ats")
 
 
 def _get_employer(user: User, db: Session) -> Employer:
@@ -58,8 +71,10 @@ def upsert_company(
     db: Session = Depends(get_db),
 ):
     e = _get_employer(user, db)
+    company = None
     if e.company_id:
         company = db.query(Company).filter(Company.id == e.company_id).first()
+    if company:
         for field, value in body.model_dump().items():
             setattr(company, field, value)
     else:
@@ -81,11 +96,13 @@ def create_need(
     if body.salary_to < body.salary_from:
         raise HTTPException(400, "salary_to должен быть >= salary_from")
     e = _get_employer(user, db)
+    if len((body.description or "").strip()) < 20:
+        raise HTTPException(400, "Описание потребности минимум 20 символов (защита от пустых вакансий)")
     need = EmployerNeed(employer_id=e.id, **body.model_dump())
     db.add(need)
     db.commit()
     db.refresh(need)
-    return need
+    return _need_out(need, e)
 
 
 @router.get("/needs", response_model=list[NeedOut])
@@ -94,7 +111,8 @@ def list_needs(
     db: Session = Depends(get_db),
 ):
     e = _get_employer(user, db)
-    return db.query(EmployerNeed).filter(EmployerNeed.employer_id == e.id).all()
+    needs = db.query(EmployerNeed).filter(EmployerNeed.employer_id == e.id).all()
+    return [_need_out(n, e) for n in needs]
 
 
 @router.get("/match", response_model=MatchResponse)
@@ -131,7 +149,9 @@ def match(
                 about=c.about,
                 stack=c.stack,
                 specialization=c.specialization,
+                selected_grade=c.selected_grade,
                 confirmed_grade=c.confirmed_grade,
+                grade_confirmed=match_service.grade_confirmed_in_category(c, category, grade),
                 category_id=c.category_id,
                 test_score=c.test_score,
                 fsp_score=c.fsp_score,
@@ -178,6 +198,18 @@ def create_invitation(
     candidate = db.query(Candidate).filter(Candidate.id == body.candidate_id).first()
     if not candidate:
         raise HTTPException(404, "Кандидат не найден")
+    if body.need_id:
+        need = (
+            db.query(EmployerNeed)
+            .filter(EmployerNeed.id == body.need_id, EmployerNeed.employer_id == e.id)
+            .first()
+        )
+        if not need:
+            raise HTTPException(404, "Потребность не найдена")
+        if need.is_suspicious:
+            raise HTTPException(400, "Потребность скрыта из-за жалоб — создайте новую")
+    if e.company and not e.company.verified and not (e.company.description or "").strip():
+        raise HTTPException(400, "Заполните описание компании или запросите верификацию")
 
     reason = match_service.build_reason(candidate)
     inv = Invitation(
@@ -191,6 +223,25 @@ def create_invitation(
         status=InvitationStatus.SENT,
     )
     db.add(inv)
+    db.flush()
+
+    if body.employer_task_id:
+        task = (
+            db.query(EmployerTask)
+            .filter(EmployerTask.id == body.employer_task_id, EmployerTask.employer_id == e.id)
+            .first()
+        )
+        if not task:
+            raise HTTPException(404, "Задание работодателя не найдено")
+        db.add(
+            TaskAssignment(
+                task_id=task.id,
+                candidate_id=candidate.id,
+                invitation_id=inv.id,
+                status=TaskAssignmentStatus.PENDING,
+            )
+        )
+
     db.commit()
     db.refresh(inv)
 
@@ -251,4 +302,181 @@ def _invitation_out(
         candidate_phone=phone,
         candidate_telegram=telegram,
         candidate_email=email,
+        contacts_revoked=bool(inv.contacts_revoked),
     )
+
+
+def _need_out(need: EmployerNeed, employer: Employer) -> NeedOut:
+    company = employer.company
+    return NeedOut(
+        id=need.id,
+        title=need.title,
+        specialization=need.specialization,
+        grade=need.grade,
+        stack=need.stack,
+        description=need.description,
+        salary_from=need.salary_from,
+        salary_to=need.salary_to,
+        salary_gross=need.salary_gross,
+        report_count=need.report_count,
+        is_suspicious=need.is_suspicious,
+        company_verified=bool(company and company.verified),
+        created_at=need.created_at,
+    )
+
+
+@router.post("/tasks", response_model=EmployerTaskOut, status_code=201)
+def create_task(
+    body: EmployerTaskCreate,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    options_json = json.dumps(body.options) if body.options else None
+    task = EmployerTask(
+        employer_id=e.id,
+        title=body.title,
+        task_type=body.task_type,
+        prompt=body.prompt,
+        options_json=options_json,
+        correct_index=body.correct_index,
+        expected_stdout=body.expected_stdout,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return _task_out(task)
+
+
+@router.get("/tasks", response_model=list[EmployerTaskOut])
+def list_tasks(
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    tasks = db.query(EmployerTask).filter(EmployerTask.employer_id == e.id).all()
+    return [_task_out(t) for t in tasks]
+
+
+@router.get("/tasks/assignments", response_model=list[TaskAssignmentOut])
+def list_assignments(
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    task_ids = [t.id for t in db.query(EmployerTask).filter(EmployerTask.employer_id == e.id).all()]
+    if not task_ids:
+        return []
+    rows = (
+        db.query(TaskAssignment)
+        .filter(TaskAssignment.task_id.in_(task_ids))
+        .order_by(TaskAssignment.id.desc())
+        .all()
+    )
+    result = []
+    for a in rows:
+        task = db.query(EmployerTask).filter(EmployerTask.id == a.task_id).first()
+        options = None
+        if task and task.options_json:
+            try:
+                options = json.loads(task.options_json)
+            except json.JSONDecodeError:
+                options = None
+        cand = db.query(Candidate).filter(Candidate.id == a.candidate_id).first()
+        company_name = e.company.name if e.company else None
+        result.append(
+            TaskAssignmentOut(
+                id=a.id,
+                task_id=a.task_id,
+                task_title=task.title if task else "",
+                task_type=task.task_type if task else EmployerTaskType.OPEN,
+                prompt=task.prompt if task else "",
+                options=options,
+                status=a.status,
+                score=a.score,
+                feedback=a.feedback,
+                invitation_id=a.invitation_id,
+                company_name=company_name,
+                candidate_name=cand.full_name if cand else None,
+                submitted_at=a.submitted_at,
+                answer_text=a.answer_text,
+                answer_mcq_index=a.answer_mcq_index,
+                code_submitted=a.code_submitted,
+            )
+        )
+    return result
+
+
+def _task_out(task: EmployerTask) -> EmployerTaskOut:
+    options = None
+    if task.options_json:
+        try:
+            options = json.loads(task.options_json)
+        except json.JSONDecodeError:
+            options = None
+    return EmployerTaskOut(
+        id=task.id,
+        title=task.title,
+        task_type=task.task_type,
+        prompt=task.prompt,
+        options=options,
+        created_at=task.created_at,
+    )
+
+
+@router.get("/ats/export", response_model=AtsExportOut)
+def ats_export(
+    invitation_id: int = Query(...),
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    inv = (
+        db.query(Invitation)
+        .filter(Invitation.id == invitation_id, Invitation.employer_id == e.id)
+        .first()
+    )
+    if not inv:
+        raise HTTPException(404, "Приглашение не найдено")
+    cand = db.query(Candidate).filter(Candidate.id == inv.candidate_id).first()
+    payload = {
+        "invitation_status": inv.status.value,
+        "candidate": {
+            "id": cand.id if cand else None,
+            "full_name": cand.full_name if cand else None,
+            "category_id": cand.category_id if cand else None,
+            "test_score": cand.test_score if cand else None,
+        },
+        "salary": {"from": inv.salary_from, "to": inv.salary_to},
+        "message": inv.message,
+    }
+    return AtsExportOut(invitation_id=inv.id, candidate_id=inv.candidate_id, payload=payload)
+
+
+@router.post("/ats/webhook")
+def ats_webhook(
+    body: AtsWebhookIn,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    _get_employer(user, db)
+    logger.info("ATS webhook: %s payload=%s", body.event, body.payload)
+    return {"ok": True, "received": body.event}
+
+
+@router.post("/company/verify-request")
+def request_company_verify(
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    if not e.company_id:
+        raise HTTPException(400, "Сначала создайте профиль компании")
+    company = db.query(Company).filter(Company.id == e.company_id).first()
+    if not company:
+        e.company_id = None
+        db.commit()
+        raise HTTPException(404, "Компания не найдена — создайте профиль заново")
+    company.verification_note = "Заявка на проверку отправлена (демо)"
+    db.commit()
+    return {"ok": True, "verified": company.verified}

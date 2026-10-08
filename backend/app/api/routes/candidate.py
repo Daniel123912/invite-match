@@ -1,8 +1,11 @@
 import json
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.candidate_serializers import candidate_to_out
+from app.api.routes.candidate_extra import apply_profile_minor_fields
 from app.config import get_settings
 from app.core.privacy import apply_consent, require_consent
 from app.core.security import require_role
@@ -14,6 +17,7 @@ from app.schemas import (
     CategoryResultOut,
     ContactsRevokeRequest,
     InvitationOut,
+    ProctorEventRequest,
     QuestionOut,
     SurveyRequest,
     TestAttemptOut,
@@ -22,6 +26,7 @@ from app.schemas import (
     TestSubmitRequest,
 )
 from app.services import test_service
+from app.services.candidate_utils import set_specializations
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 settings = get_settings()
@@ -34,12 +39,22 @@ def _get_candidate(user: User, db: Session) -> Candidate:
     return c
 
 
+def _safe_options(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
 @router.get("/profile", response_model=CandidateOut)
 def get_profile(
     user: User = Depends(require_role(UserRole.CANDIDATE)),
     db: Session = Depends(get_db),
 ):
-    return _get_candidate(user, db)
+    return candidate_to_out(_get_candidate(user, db))
 
 
 @router.patch("/profile", response_model=CandidateOut)
@@ -62,6 +77,8 @@ def update_profile(
     if data.get("privacy_public") is True and not c.consent_152fz:
         raise HTTPException(400, "Нельзя публиковать профиль без согласия 152-ФЗ")
 
+    apply_profile_minor_fields(c, data)
+
     for field, value in data.items():
         setattr(c, field, value)
 
@@ -83,7 +100,7 @@ def update_profile(
 
     db.commit()
     db.refresh(c)
-    return c
+    return candidate_to_out(c)
 
 
 @router.post("/survey", response_model=CandidateOut)
@@ -95,11 +112,12 @@ def submit_survey(
     c = _get_candidate(user, db)
     require_consent(c)
     c.industry = body.industry
-    c.specialization = body.specialization
     c.selected_grade = body.selected_grade
+    specs = body.specializations or [body.specialization]
+    set_specializations(c, specs)
     db.commit()
     db.refresh(c)
-    return c
+    return candidate_to_out(c)
 
 
 @router.post("/test/start", response_model=TestStartResponse)
@@ -113,16 +131,18 @@ def start_test(
     questions = test_service.get_attempt_questions(db, attempt)
     category = db.query(Category).filter(Category.id == attempt.category_id).first()
 
+    token = secrets.token_hex(4).upper()
     return TestStartResponse(
         attempt_id=attempt.id,
         variant_group=attempt.variant_group,
         category_title=category.title if category else "",
+        integrity_hint=f"FSP-{token}: не копируйте вопросы — прокторинг активен",
         questions=[
             QuestionOut(
                 id=q.id,
                 topic=q.topic,
                 text=q.text,
-                options=json.loads(q.options_json),
+                options=_safe_options(q.options_json),
                 difficulty=q.difficulty,
             )
             for q in questions
@@ -149,7 +169,20 @@ def submit_test(
         confirmed_grade=c.confirmed_grade if attempt.passed else None,
         category_id=c.category_id if attempt.passed else None,
         category_title=category.title if category and attempt.passed else None,
+        proctor_flagged=bool(attempt.proctor_flagged),
+        plagiarism_score=attempt.plagiarism_score,
     )
+
+
+@router.post("/test/{attempt_id}/proctor", status_code=204)
+def proctor_event(
+    attempt_id: int,
+    body: ProctorEventRequest,
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    test_service.record_proctor_event(db, c, attempt_id, body.event)
 
 
 @router.get("/category", response_model=CategoryResultOut)
@@ -163,11 +196,19 @@ def get_category(
     if c.category_id:
         category = db.query(Category).filter(Category.id == c.category_id).first()
 
+    grade_confirmed = bool(
+        c.category_id
+        and c.confirmed_grade
+        and c.selected_grade
+        and c.confirmed_grade == c.selected_grade
+    )
     return CategoryResultOut(
         category_id=c.category_id,
         category_title=category.title if category else None,
         specialization=c.specialization,
+        selected_grade=c.selected_grade,
         confirmed_grade=c.confirmed_grade,
+        grade_confirmed=grade_confirmed,
         test_score=c.test_score,
         has_fsp_history=c.has_fsp_history,
         fsp_score=c.fsp_score,
@@ -250,4 +291,5 @@ def revoke_contacts(
         created_at=inv.created_at,
         company_name=company_name,
         candidate_name=c.full_name,
+        contacts_revoked=bool(inv.contacts_revoked),
     )

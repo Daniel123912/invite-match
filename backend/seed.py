@@ -111,46 +111,6 @@ BACKEND_JUNIOR = [
         "correct_index": 1,
         "difficulty": 1,
     },
-    {
-        "variant_group": "C",
-        "topic": "HTTP",
-        "text": "Заголовок Content-Type указывает:",
-        "options": ["Кодировку URL", "Тип тела запроса/ответа", "Размер файла", "Метод HTTP"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "SQL",
-        "text": "PRIMARY KEY гарантирует:",
-        "options": ["Сортировку", "Уникальность и NOT NULL", "Только индекс", "Внешнюю ссылку"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "Python",
-        "text": "Ключевое слово для определения функции:",
-        "options": ["func", "def", "fn", "lambda only"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "Git",
-        "text": "git status показывает:",
-        "options": ["Историю коммитов", "Состояние рабочей директории", "Удалённые ветки", "Только diff"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "REST",
-        "text": "DELETE обычно возвращает при успехе:",
-        "options": ["201", "200 или 204", "302", "500"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
 ]
 
 BACKEND_MIDDLE = [
@@ -259,46 +219,6 @@ BACKEND_MIDDLE = [
         "correct_index": 1,
         "difficulty": 2,
     },
-    {
-        "variant_group": "C",
-        "topic": "Architecture",
-        "text": "Микросервисы чаще обмениваются через:",
-        "options": ["Только общую БД", "HTTP/gRPC и асинхронные сообщения", "FTP", "Локальные файлы"],
-        "correct_index": 1,
-        "difficulty": 2,
-    },
-    {
-        "variant_group": "C",
-        "topic": "DB",
-        "text": "Транзакция ACID — атомарность означает:",
-        "options": ["Все или ничего", "Только чтение", "Шардирование", "Репликацию"],
-        "correct_index": 0,
-        "difficulty": 2,
-    },
-    {
-        "variant_group": "C",
-        "topic": "Auth",
-        "text": "OAuth2 authorization code flow выдаёт код для:",
-        "options": ["Прямого доступа к паролю", "Обмена на токены на бэкенде", "Хранения в localStorage всегда", "Отключения HTTPS"],
-        "correct_index": 1,
-        "difficulty": 2,
-    },
-    {
-        "variant_group": "C",
-        "topic": "Caching",
-        "text": "Проблема «холодного старта» кэша решается часто через:",
-        "options": ["Удаление TTL", "Прогрев (warm-up)", "Отключение Redis", "Только CDN"],
-        "correct_index": 1,
-        "difficulty": 2,
-    },
-    {
-        "variant_group": "C",
-        "topic": "Concurrency",
-        "text": "Deadlock — это ситуация когда:",
-        "options": ["Один поток", "Потоки взаимно ждут ресурсы друг друга", "Нет CPU", "Только в JS"],
-        "correct_index": 1,
-        "difficulty": 2,
-    },
 ]
 
 FRONTEND_JUNIOR = [
@@ -392,46 +312,6 @@ FRONTEND_JUNIOR = [
         "correct_index": 1,
         "difficulty": 1,
     },
-    {
-        "variant_group": "C",
-        "topic": "JS",
-        "text": "Массив в JS создаётся литералом:",
-        "options": ["{}", "()", "[]", "<>"],
-        "correct_index": 2,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "React",
-        "text": "key в списке элементов нужен для:",
-        "options": ["Стилизации", "Стабильной идентификации при обновлении", "SEO", "Роутинга"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "CSS",
-        "text": "display: none скрывает элемент и:",
-        "options": ["Оставляет место в потоке", "Убирает из потока документа", "Только прозрачность", "Блокирует клики везде"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "HTML",
-        "text": "Тег <button type=\"submit\"> в форме:",
-        "options": ["Сбрасывает форму", "Отправляет форму", "Только ссылка", "Всегда disabled"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
-    {
-        "variant_group": "C",
-        "topic": "TS",
-        "text": "interface в TypeScript описывает:",
-        "options": ["Только классы", "Форму объекта/контракт", "Только функции", "CSS-модули"],
-        "correct_index": 1,
-        "difficulty": 1,
-    },
 ]
 
 QUESTIONS_BY_CAT = {
@@ -489,8 +369,6 @@ def seed() -> None:
             "FSP-1001": [("Чемпионат ФСП 2025 — финалист", 40), ("Хакатон — 1 место", 30)],
             "FSP-1002": [("Региональный этап — призёр", 25)],
             "FSP-2001": [("Всероссийский турнир — участник", 15)],
-            "FSP-3001": [("Олимпиада по программированию — диплом", 35), ("Командный зачёт — 2 место", 20)],
-            "FSP-3002": [("Инженерный кейс-чемпионат — участник", 18)],
         }.items():
             for title, points in items:
                 db.add(FspAchievement(fsp_id=fsp_id, title=title, points=points))
@@ -505,10 +383,12 @@ def seed() -> None:
         db.flush()
         company = Company(
             name="ДемоТех",
-            description="IT-компания для демо хакатона",
+            description="IT-компания для демо хакатона. Разрабатываем B2B SaaS для подбора.",
             website="https://example.com",
             industry=Industry.IT,
             city="Москва",
+            verified=True,
+            verification_note="Демо: компания проверена",
         )
         db.add(company)
         db.flush()
@@ -528,11 +408,26 @@ def seed() -> None:
                 specialization=Specialization.BACKEND,
                 grade=GradeLevel.MIDDLE,
                 stack="Python, FastAPI, PostgreSQL",
-                description="Нужен разработчик API",
+                description="Нужен разработчик API для платформы подбора. Стек Python/FastAPI, опыт от 2 лет.",
                 salary_from=200000,
                 salary_to=350000,
+                salary_gross=True,
             )
         )
+
+        from app.models import EmployerTask, EmployerTaskType
+        from scripts.ensure_demo_task import CODE_TASKS
+
+        for item in CODE_TASKS:
+            db.add(
+                EmployerTask(
+                    employer_id=employer.id,
+                    title=item["title"],
+                    task_type=EmployerTaskType.CODE,
+                    prompt=item["prompt"],
+                    expected_stdout=item["expected_stdout"],
+                )
+            )
 
         # Demo candidates (pre-categorized for employer match demo)
         demo_candidates = [
@@ -578,71 +473,6 @@ def seed() -> None:
                 )
             )
 
-        _extra_specs = [Specialization.BACKEND, Specialization.FRONTEND]
-        _extra_grades = [GradeLevel.JUNIOR, GradeLevel.MIDDLE, GradeLevel.SENIOR]
-        _extra_stacks = {
-            Specialization.BACKEND: [
-                "Python, FastAPI, PostgreSQL",
-                "Go, gRPC, Kubernetes",
-                "Java, Spring Boot",
-                "Node.js, NestJS",
-                "C#, .NET",
-            ],
-            Specialization.FRONTEND: [
-                "React, TypeScript, Vite",
-                "Vue 3, Pinia",
-                "Angular, RxJS",
-                "Next.js, Tailwind",
-                "Svelte, SvelteKit",
-            ],
-        }
-        _extra_fsp_ids = ["FSP-1001", "FSP-1002", "FSP-2001", None]
-        _demo_pwd = hash_password("demo1234")
-        _fallback_cat_key = (Specialization.BACKEND, GradeLevel.JUNIOR)
-
-        for i in range(1, 26):
-            email = f"cand_extra_{i:02d}@demo.ru"
-            spec = _extra_specs[i % len(_extra_specs)]
-            grade = _extra_grades[i % len(_extra_grades)]
-            cat_key = (spec, grade)
-            if cat_key not in categories:
-                cat_key = _fallback_cat_key
-            cat = categories[cat_key]
-            spec, grade = cat_key
-            stack = _extra_stacks[spec][i % len(_extra_stacks[spec])]
-            fsp_id = _extra_fsp_ids[i % len(_extra_fsp_ids)]
-            score = 55.0 + (i * 17) % 41
-            fsp_score = 0.0
-            has_fsp = False
-            if fsp_id:
-                ach = db.query(FspAchievement).filter(FspAchievement.fsp_id == fsp_id).all()
-                fsp_score = float(sum(a.points for a in ach))
-                has_fsp = bool(ach)
-            u = User(email=email, hashed_password=_demo_pwd, role=UserRole.CANDIDATE)
-            db.add(u)
-            db.flush()
-            db.add(
-                Candidate(
-                    user_id=u.id,
-                    full_name=f"Синтетический кандидат {i:02d}",
-                    city="Санкт-Петербург" if i % 2 else "Москва",
-                    about=f"Автосгенерированный профиль #{i:02d}",
-                    stack=stack,
-                    industry=Industry.IT,
-                    specialization=spec,
-                    selected_grade=grade,
-                    confirmed_grade=grade,
-                    category_id=cat.id,
-                    test_score=score,
-                    fsp_id=fsp_id,
-                    fsp_score=fsp_score,
-                    has_fsp_history=has_fsp,
-                    privacy_public=True,
-                    consent_152fz=True,
-                    consent_152fz_at=consent_at,
-                )
-            )
-
         # Fresh candidate without category (for full flow demo)
         fresh = User(
             email="new@demo.ru",
@@ -660,10 +490,8 @@ def seed() -> None:
             )
         )
 
-        candidate_count = db.query(Candidate).count()
         db.commit()
         print("Seed OK")
-        print(f"  Candidates seeded: {candidate_count}")
         print("  employer@demo.ru / demo1234")
         print("  candidate@demo.ru / demo1234  (Backend Middle, FSP)")
         print("  new@demo.ru / demo1234        (empty profile -> survey -> test)")
