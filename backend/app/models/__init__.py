@@ -85,6 +85,9 @@ class Candidate(Base):
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resume_file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resume_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    resume_storage_key: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     stack: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # comma-separated
 
     industry: Mapped[Optional[Industry]] = mapped_column(Enum(Industry), nullable=True)
