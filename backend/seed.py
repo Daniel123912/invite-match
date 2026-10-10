@@ -378,6 +378,7 @@ def seed() -> None:
             email="employer@demo.ru",
             hashed_password=hash_password("demo1234"),
             role=UserRole.EMPLOYER,
+            email_verified=True,
         )
         db.add(emp_user)
         db.flush()
@@ -387,6 +388,9 @@ def seed() -> None:
             website="https://example.com",
             industry=Industry.IT,
             city="Москва",
+            contact_email="hr@demotech.example",
+            contact_phone="+74951234567",
+            contact_telegram="@demotech_hr",
             verified=True,
             verification_note="Демо: компания проверена",
         )
@@ -439,7 +443,12 @@ def seed() -> None:
         ]
 
         for email, name, spec, grade, stack, fsp_id, score in demo_candidates:
-            u = User(email=email, hashed_password=hash_password("demo1234"), role=UserRole.CANDIDATE)
+            u = User(
+                email=email,
+                hashed_password=hash_password("demo1234"),
+                role=UserRole.CANDIDATE,
+                email_verified=True,
+            )
             db.add(u)
             db.flush()
             cat = categories[(spec, grade)]
@@ -478,6 +487,7 @@ def seed() -> None:
             email="new@demo.ru",
             hashed_password=hash_password("demo1234"),
             role=UserRole.CANDIDATE,
+            email_verified=True,
         )
         db.add(fresh)
         db.flush()

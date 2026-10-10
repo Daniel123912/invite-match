@@ -80,6 +80,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.CANDIDATE)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_confirm_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     candidate: Mapped[Optional["Candidate"]] = relationship(back_populates="user", uselist=False)
@@ -155,6 +157,9 @@ class Company(Base):
     website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     industry: Mapped[Optional[Industry]] = mapped_column(Enum(Industry), nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    contact_telegram: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verification_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -245,6 +250,10 @@ class Invitation(Base):
     message: Mapped[str] = mapped_column(Text)
     salary_from: Mapped[int] = mapped_column(Integer)
     salary_to: Mapped[int] = mapped_column(Integer)
+    # Способ связи с работодателем (снимок на момент приглашения)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    contact_telegram: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[InvitationStatus] = mapped_column(
         Enum(InvitationStatus), default=InvitationStatus.SENT
     )

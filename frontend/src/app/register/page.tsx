@@ -37,6 +37,8 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [confirmToken, setConfirmToken] = useState("");
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
 
   // Живая проверка email без перезагрузки страницы
   useEffect(() => {
@@ -68,6 +70,17 @@ export default function RegisterPage() {
     return () => clearTimeout(t);
   }, [email]);
 
+  async function confirmAndEnter(token: string) {
+    const data = await api<TokenResponse>("/api/auth/confirm-email", {
+      method: "POST",
+      body: { token },
+    });
+    setAuth(data);
+    startTransition(() => {
+      router.push(data.role === "employer" ? "/employer" : "/candidate");
+    });
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -79,7 +92,11 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const data = await api<TokenResponse>("/api/auth/register", {
+      const data = await api<{
+        message: string;
+        email: string;
+        email_confirm_token?: string | null;
+      }>("/api/auth/register", {
         method: "POST",
         body: {
           email: email.trim(),
@@ -90,13 +107,29 @@ export default function RegisterPage() {
           ...(role === "candidate" && birthDate ? { birth_date: birthDate, parental_consent: parentalConsent } : {}),
         },
       });
-      setAuth(data);
-      // client-side переход без hard reload
-      startTransition(() => {
-        router.push(data.role === "employer" ? "/employer" : "/candidate");
-      });
+      if (data.email_confirm_token) {
+        setConfirmToken(data.email_confirm_token);
+        setAwaitingConfirm(true);
+        await confirmAndEnter(data.email_confirm_token);
+      } else {
+        setAwaitingConfirm(true);
+        setError("Аккаунт создан. Подтвердите email токеном из письма (или /api/auth/resend-confirmation).");
+      }
     } catch (err) {
       setError(formatApiError(err, "Ошибка регистрации"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onConfirmManual(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await confirmAndEnter(confirmToken.trim());
+    } catch (err) {
+      setError(formatApiError(err, "Не удалось подтвердить email"));
     } finally {
       setLoading(false);
     }
@@ -112,6 +145,20 @@ export default function RegisterPage() {
         </Link>
         <h1 className="cabinet-title mt-4">Регистрация</h1>
         <p className="muted mt-2 text-sm">Создайте аккаунт кандидата или работодателя.</p>
+        {awaitingConfirm && (
+          <form onSubmit={onConfirmManual} className="panel panel-solid mt-7 flex flex-col gap-4">
+            <p className="text-sm">Подтвердите email токеном (в демо он приходит в ответе регистрации).</p>
+            <div className="field">
+              <label>Токен подтверждения</label>
+              <input value={confirmToken} onChange={(e) => setConfirmToken(e.target.value)} />
+            </div>
+            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            <button className="btn btn-primary w-full" disabled={busy || !confirmToken.trim()}>
+              {busy ? "Подтверждаем…" : "Подтвердить и войти"}
+            </button>
+          </form>
+        )}
+        {!awaitingConfirm && (
         <form onSubmit={onSubmit} className="panel panel-solid mt-7 flex flex-col gap-4" noValidate>
           <div className="field">
             <label>Имя</label>
@@ -212,6 +259,7 @@ export default function RegisterPage() {
             {busy ? "Создаём…" : "Создать аккаунт"}
           </button>
         </form>
+        )}
         <p className="muted mt-5 text-sm">
           Уже есть аккаунт?{" "}
           <Link href="/login" className="link-quiet">

@@ -37,6 +37,19 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: UserRole
     user_id: int
+    email_verified: bool = False
+
+
+class RegisterResponse(BaseModel):
+    """Регистрация без входа — нужен confirm email."""
+
+    message: str
+    email: EmailStr
+    email_confirm_token: Optional[str] = None
+
+
+class ConfirmEmailRequest(BaseModel):
+    token: str = Field(min_length=8, max_length=128)
 
 
 class UserOut(BaseModel):
@@ -44,6 +57,7 @@ class UserOut(BaseModel):
     email: EmailStr
     role: UserRole
     is_active: bool
+    email_verified: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -192,11 +206,14 @@ class TestAttemptOut(BaseModel):
 # ── Employer / Company ────────────────────────────────
 
 class CompanyUpdate(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=20, max_length=5000)
     website: Optional[str] = None
     industry: Optional[Industry] = None
     city: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_telegram: Optional[str] = None
 
 
 class CompanyOut(BaseModel):
@@ -206,6 +223,9 @@ class CompanyOut(BaseModel):
     website: Optional[str] = None
     industry: Optional[Industry] = None
     city: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_telegram: Optional[str] = None
     verified: bool = False
     verification_note: Optional[str] = None
 
@@ -266,9 +286,12 @@ class InvitationCreate(BaseModel):
     candidate_id: int
     need_id: Optional[int] = None
     employer_task_id: Optional[int] = None
-    message: str
+    message: str = Field(min_length=20, max_length=5000)
     salary_from: int = Field(gt=0)
     salary_to: int = Field(gt=0)
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_telegram: Optional[str] = None
 
 
 class InvitationOut(BaseModel):
@@ -289,6 +312,10 @@ class InvitationOut(BaseModel):
     candidate_telegram: Optional[str] = None
     candidate_email: Optional[str] = None
     contacts_revoked: bool = False
+    # Способ связи с работодателем (виден кандидату)
+    employer_contact_email: Optional[str] = None
+    employer_contact_phone: Optional[str] = None
+    employer_contact_telegram: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
