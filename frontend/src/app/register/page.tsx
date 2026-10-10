@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState, useTransition } from "react";
-import { api, setAuth, TokenResponse, API_URL } from "@/lib/api";
+import { api, formatApiError, setAuth, TokenResponse, API_URL } from "@/lib/api";
 
 type FieldErrors = {
   fullName?: string;
@@ -30,11 +30,15 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"candidate" | "employer">("candidate");
   const [consent, setConsent] = useState(false);
+  const [birthDate, setBirthDate] = useState("");
+  const [parentalConsent, setParentalConsent] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [emailStatus, setEmailStatus] = useState<"" | "checking" | "free" | "taken">("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [confirmToken, setConfirmToken] = useState("");
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
 
   // Живая проверка email без перезагрузки страницы
   useEffect(() => {
@@ -66,6 +70,17 @@ export default function RegisterPage() {
     return () => clearTimeout(t);
   }, [email]);
 
+  async function confirmAndEnter(token: string) {
+    const data = await api<TokenResponse>("/api/auth/confirm-email", {
+      method: "POST",
+      body: { token },
+    });
+    setAuth(data);
+    startTransition(() => {
+      router.push(data.role === "employer" ? "/employer" : "/candidate");
+    });
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -77,7 +92,11 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const data = await api<TokenResponse>("/api/auth/register", {
+      const data = await api<{
+        message: string;
+        email: string;
+        email_confirm_token?: string | null;
+      }>("/api/auth/register", {
         method: "POST",
         body: {
           email: email.trim(),
@@ -85,15 +104,32 @@ export default function RegisterPage() {
           role,
           full_name: fullName.trim(),
           consent_152fz: true,
+          ...(role === "candidate" && birthDate ? { birth_date: birthDate, parental_consent: parentalConsent } : {}),
         },
       });
-      setAuth(data);
-      // client-side переход без hard reload
-      startTransition(() => {
-        router.push(data.role === "employer" ? "/employer" : "/candidate");
-      });
+      if (data.email_confirm_token) {
+        setConfirmToken(data.email_confirm_token);
+        setAwaitingConfirm(true);
+        await confirmAndEnter(data.email_confirm_token);
+      } else {
+        setAwaitingConfirm(true);
+        setError("Аккаунт создан. Подтвердите email токеном из письма (или /api/auth/resend-confirmation).");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка регистрации");
+      setError(formatApiError(err, "Ошибка регистрации"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onConfirmManual(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await confirmAndEnter(confirmToken.trim());
+    } catch (err) {
+      setError(formatApiError(err, "Не удалось подтвердить email"));
     } finally {
       setLoading(false);
     }
@@ -102,96 +138,135 @@ export default function RegisterPage() {
   const busy = loading || pending;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
-      <Link href="/" className="muted mb-6 text-sm">
-        ← На главную
-      </Link>
-      <h1 className="text-3xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
-        Регистрация
-      </h1>
-      <form onSubmit={onSubmit} className="panel mt-6 flex flex-col gap-4" noValidate>
-        <div className="field">
-          <label>Имя</label>
-          <input
-            value={fullName}
-            onChange={(e) => {
-              setFullName(e.target.value);
-              setFieldErrors((p) => ({ ...p, fullName: undefined }));
-            }}
-            autoComplete="name"
-          />
-          {fieldErrors.fullName && (
-            <p className="text-sm text-[var(--danger)]">{fieldErrors.fullName}</p>
-          )}
-        </div>
-        <div className="field">
-          <label>Email</label>
-          <input
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setFieldErrors((p) => ({ ...p, email: undefined }));
-            }}
-            type="email"
-            autoComplete="email"
-          />
-          {emailStatus === "checking" && <p className="muted text-xs">Проверяем email…</p>}
-          {emailStatus === "free" && !fieldErrors.email && (
-            <p className="text-xs text-[var(--ok)]">Email свободен</p>
-          )}
-          {fieldErrors.email && (
-            <p className="text-sm text-[var(--danger)]">{fieldErrors.email}</p>
-          )}
-        </div>
-        <div className="field">
-          <label>Пароль</label>
-          <input
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setFieldErrors((p) => ({ ...p, password: undefined }));
-            }}
-            type="password"
-            autoComplete="new-password"
-          />
-          <p className="muted text-xs">Минимум 8 символов, буква и цифра</p>
-          {fieldErrors.password && (
-            <p className="text-sm text-[var(--danger)]">{fieldErrors.password}</p>
-          )}
-        </div>
-        <div className="field">
-          <label>Роль</label>
-          <select value={role} onChange={(e) => setRole(e.target.value as "candidate" | "employer")}>
-            <option value="candidate">Кандидат</option>
-            <option value="employer">Работодатель</option>
-          </select>
-        </div>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => {
-              setConsent(e.target.checked);
-              setFieldErrors((p) => ({ ...p, consent: undefined }));
-            }}
-            className="mt-1"
-          />
-          <span>
-            Даю согласие на обработку персональных данных в соответствии с 152-ФЗ. Контакты
-            кандидата открываются работодателю только после принятия приглашения.
-          </span>
-        </label>
-        {fieldErrors.consent && (
-          <p className="text-sm text-[var(--danger)]">{fieldErrors.consent}</p>
+    <main className="auth-shell">
+      <div className="auth-card">
+        <Link href="/" className="cabinet-brand">
+          FSP Match
+        </Link>
+        <h1 className="cabinet-title mt-4">Регистрация</h1>
+        <p className="muted mt-2 text-sm">Создайте аккаунт кандидата или работодателя.</p>
+        {awaitingConfirm && (
+          <form onSubmit={onConfirmManual} className="panel panel-solid mt-7 flex flex-col gap-4">
+            <p className="text-sm">Подтвердите email токеном (в демо он приходит в ответе регистрации).</p>
+            <div className="field">
+              <label>Токен подтверждения</label>
+              <input value={confirmToken} onChange={(e) => setConfirmToken(e.target.value)} />
+            </div>
+            {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            <button className="btn btn-primary w-full" disabled={busy || !confirmToken.trim()}>
+              {busy ? "Подтверждаем…" : "Подтвердить и войти"}
+            </button>
+          </form>
         )}
-        {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-        <button
-          className="btn btn-primary"
-          disabled={busy || emailStatus === "taken" || emailStatus === "checking"}
-        >
-          {busy ? "Создаём…" : "Создать аккаунт"}
-        </button>
-      </form>
+        {!awaitingConfirm && (
+        <form onSubmit={onSubmit} className="panel panel-solid mt-7 flex flex-col gap-4" noValidate>
+          <div className="field">
+            <label>Имя</label>
+            <input
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setFieldErrors((p) => ({ ...p, fullName: undefined }));
+              }}
+              autoComplete="name"
+            />
+            {fieldErrors.fullName && (
+              <p className="text-sm text-[var(--danger)]">{fieldErrors.fullName}</p>
+            )}
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((p) => ({ ...p, email: undefined }));
+              }}
+              type="email"
+              autoComplete="email"
+            />
+            {emailStatus === "checking" && <p className="muted text-xs">Проверяем email…</p>}
+            {emailStatus === "free" && !fieldErrors.email && (
+              <p className="text-xs text-[var(--ok)]">Email свободен</p>
+            )}
+            {fieldErrors.email && (
+              <p className="text-sm text-[var(--danger)]">{fieldErrors.email}</p>
+            )}
+          </div>
+          <div className="field">
+            <label>Пароль</label>
+            <input
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFieldErrors((p) => ({ ...p, password: undefined }));
+              }}
+              type="password"
+              autoComplete="new-password"
+            />
+            <p className="muted text-xs">Минимум 8 символов, буква и цифра</p>
+            {fieldErrors.password && (
+              <p className="text-sm text-[var(--danger)]">{fieldErrors.password}</p>
+            )}
+          </div>
+          {role === "candidate" && (
+            <>
+              <div className="field">
+                <label>Дата рождения (для 16–17 лет)</label>
+                <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={parentalConsent}
+                  onChange={(e) => setParentalConsent(e.target.checked)}
+                />
+                <span>Согласие родителей на обработку ПДн (обязательно для 16–17 лет)</span>
+              </label>
+            </>
+          )}
+          <div className="field">
+            <label>Роль</label>
+            <select value={role} onChange={(e) => setRole(e.target.value as "candidate" | "employer")}>
+              <option value="candidate">Кандидат</option>
+              <option value="employer">Работодатель</option>
+            </select>
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => {
+                setConsent(e.target.checked);
+                setFieldErrors((p) => ({ ...p, consent: undefined }));
+              }}
+              className="mt-1"
+            />
+            <span>
+              Даю согласие на обработку персональных данных в соответствии с 152-ФЗ. Контакты
+              кандидата открываются работодателю только после принятия приглашения.
+            </span>
+          </label>
+          {fieldErrors.consent && (
+            <p className="text-sm text-[var(--danger)]">{fieldErrors.consent}</p>
+          )}
+          {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+          <button
+            className="btn btn-primary w-full"
+            disabled={busy || emailStatus === "taken" || emailStatus === "checking"}
+          >
+            {busy ? "Создаём…" : "Создать аккаунт"}
+          </button>
+        </form>
+        )}
+        <p className="muted mt-5 text-sm">
+          Уже есть аккаунт?{" "}
+          <Link href="/login" className="link-quiet">
+            Войти
+          </Link>
+        </p>
+      </div>
     </main>
   );
 }

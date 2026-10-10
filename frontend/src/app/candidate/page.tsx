@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
+import { labelGrade, labelSpec } from "@/lib/labels";
 
 interface Profile {
   full_name: string;
@@ -17,30 +18,6 @@ interface Profile {
   consent_152fz?: boolean;
 }
 
-const SPEC_LABELS: Record<string, string> = {
-  backend: "Backend",
-  frontend: "Frontend",
-  fullstack: "Fullstack",
-  devops: "DevOps",
-  data: "Data",
-  qa: "QA",
-  mobile: "Mobile",
-};
-
-const GRADE_LABELS: Record<string, string> = {
-  junior: "Junior",
-  middle: "Middle",
-  senior: "Senior",
-};
-
-function labelSpec(v?: string) {
-  return v ? SPEC_LABELS[v] || v : "—";
-}
-
-function labelGrade(v?: string) {
-  return v ? GRADE_LABELS[v] || v : "—";
-}
-
 export default function CandidateHome() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
@@ -48,7 +25,7 @@ export default function CandidateHome() {
   useEffect(() => {
     api<Profile>("/api/candidate/profile")
       .then(setProfile)
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(formatApiError(e)));
   }, []);
 
   if (error) {
@@ -117,6 +94,7 @@ export default function CandidateHome() {
   ];
 
   const doneCount = [profileOk, surveyOk, testOk].filter(Boolean).length;
+  const nextStep = steps.find((s) => s.current) || steps[steps.length - 1];
 
   return (
     <div className="grid gap-4">
@@ -131,10 +109,7 @@ export default function CandidateHome() {
           />
           <div className="relative">
             <p className="badge w-fit">Прогресс {doneCount}/3</p>
-            <h2
-              className="mt-3 text-2xl font-bold tracking-tight md:text-3xl"
-              style={{ fontFamily: "var(--font-sora)" }}
-            >
+            <h2 className="cabinet-title mt-3 text-2xl md:text-3xl">
               {profile.full_name?.trim() || "Добро пожаловать"}
             </h2>
             <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">
@@ -155,6 +130,9 @@ export default function CandidateHome() {
                 <span className="badge">Истории ФСП нет</span>
               )}
             </div>
+            <Link href={nextStep.href} className="btn btn-primary mt-5">
+              {testOk ? "Смотреть приглашения →" : `Далее: ${nextStep.label} →`}
+            </Link>
           </div>
         </div>
       </section>
@@ -176,9 +154,7 @@ export default function CandidateHome() {
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">
-          <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-sora)" }}>
-            Следующие шаги
-          </h3>
+          <h3 className="section-title">Следующие шаги</h3>
           <p className="muted text-xs">Нажмите карточку, чтобы перейти</p>
         </div>
         <div className="step-rail">

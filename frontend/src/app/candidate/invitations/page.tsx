@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
+import { ChatPanel } from "@/components/ChatPanel";
+import { inviteStatusClass, labelInviteStatus } from "@/lib/labels";
 
 interface Invitation {
   id: number;
@@ -11,20 +13,10 @@ interface Invitation {
   salary_to: number;
   status: string;
   reason?: string;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  sent: "Новое",
-  viewed: "Просмотрено",
-  accepted: "Принято",
-  declined: "Отклонено",
-};
-
-function statusClass(status: string) {
-  if (status === "accepted") return "!bg-[#e8f6ee] !text-[var(--ok)]";
-  if (status === "declined") return "!bg-[#fdecec] !text-[var(--danger)]";
-  if (status === "viewed") return "!bg-[#fff4e8] !text-[var(--warn)]";
-  return "";
+  contacts_revoked?: boolean;
+  employer_contact_email?: string | null;
+  employer_contact_phone?: string | null;
+  employer_contact_telegram?: string | null;
 }
 
 export default function InvitationsPage() {
@@ -37,13 +29,13 @@ export default function InvitationsPage() {
       setItems(await api<Invitation[]>("/api/invitations/incoming"));
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(formatApiError(e));
       setItems([]);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function respond(id: number, status: "accepted" | "declined") {
@@ -56,23 +48,23 @@ export default function InvitationsPage() {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(formatApiError(e));
     } finally {
       setBusyId(null);
     }
   }
 
-  async function revokeContacts(id: number) {
+  async function setContactsAccess(id: number, revoke: boolean) {
     setBusyId(id);
     setError("");
     try {
       await api(`/api/candidate/invitations/${id}/contacts`, {
         method: "PATCH",
-        body: { revoke: true },
+        body: { revoke },
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(formatApiError(e));
     } finally {
       setBusyId(null);
     }
@@ -89,9 +81,7 @@ export default function InvitationsPage() {
   return (
     <div className="grid gap-4">
       <div>
-        <h2 className="text-xl font-bold" style={{ fontFamily: "var(--font-sora)" }}>
-          Приглашения
-        </h2>
+        <h2 className="section-title text-xl">Приглашения</h2>
         <p className="muted mt-1 text-sm">
           Контакты откроются работодателю только после принятия
         </p>
@@ -119,14 +109,25 @@ export default function InvitationsPage() {
                   <h3 className="text-lg font-bold">{inv.company_name || "Компания"}</h3>
                   <p className="mt-2 text-sm leading-relaxed">{inv.message}</p>
                   <p className="mt-3 text-base font-bold text-[var(--brand)]">
-                    {inv.salary_from.toLocaleString("ru-RU")} – {inv.salary_to.toLocaleString("ru-RU")} ₽
+                    {inv.salary_from.toLocaleString("ru-RU")} –{" "}
+                    {inv.salary_to.toLocaleString("ru-RU")} ₽
                   </p>
                   {inv.reason && (
                     <p className="muted mt-2 text-xs leading-relaxed">Почему вы: {inv.reason}</p>
                   )}
+                  {(inv.employer_contact_email ||
+                    inv.employer_contact_phone ||
+                    inv.employer_contact_telegram) && (
+                    <p className="mt-2 text-xs leading-relaxed">
+                      Связь с работодателем:{" "}
+                      {[inv.employer_contact_email, inv.employer_contact_phone, inv.employer_contact_telegram]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
                 </div>
-                <span className={`badge ${statusClass(inv.status)}`}>
-                  {STATUS_LABELS[inv.status] || inv.status}
+                <span className={`badge ${inviteStatusClass(inv.status)}`}>
+                  {labelInviteStatus(inv.status)}
                 </span>
               </div>
 
@@ -149,18 +150,39 @@ export default function InvitationsPage() {
                 </div>
               )}
 
+              {(inv.status === "sent" || inv.status === "viewed" || inv.status === "accepted") && (
+                <ChatPanel invitationId={inv.id} />
+              )}
+
               {inv.status === "accepted" && (
                 <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--bg)] px-4 py-3">
-                  <button
-                    className="btn btn-danger"
-                    disabled={busyId === inv.id}
-                    onClick={() => revokeContacts(inv.id)}
-                  >
-                    Отозвать доступ к контактам
-                  </button>
-                  <p className="muted mt-2 text-xs">
-                    По 152-ФЗ можно закрыть телефон и email для работодателя
-                  </p>
+                  {inv.contacts_revoked ? (
+                    <>
+                      <p className="text-sm font-semibold text-[var(--warn)]">
+                        Доступ к контактам отозван
+                      </p>
+                      <button
+                        className="btn btn-ok mt-2"
+                        disabled={busyId === inv.id}
+                        onClick={() => setContactsAccess(inv.id, false)}
+                      >
+                        Вернуть доступ
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="btn btn-danger"
+                        disabled={busyId === inv.id}
+                        onClick={() => setContactsAccess(inv.id, true)}
+                      >
+                        Отозвать доступ к контактам
+                      </button>
+                      <p className="muted mt-2 text-xs">
+                        По 152-ФЗ можно закрыть телефон и email для работодателя
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </article>

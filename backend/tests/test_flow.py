@@ -40,7 +40,7 @@ def test_invite_accept_revoke_contacts(client):
         headers=eh,
         json={
             "candidate_id": cand_id,
-            "message": "Тест приглашение",
+            "message": "Тест приглашение: приглашаем на собеседование в команду.",
             "salary_from": 180000,
             "salary_to": 250000,
         },
@@ -74,7 +74,7 @@ def test_invite_accept_revoke_contacts(client):
             headers=eh,
             json={
                 "candidate_id": cand.id,
-                "message": "Тест приглашение 2",
+                "message": "Тест приглашение 2: предлагаем обсудить вакансию.",
                 "salary_from": 180000,
                 "salary_to": 250000,
             },
