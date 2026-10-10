@@ -12,6 +12,9 @@ interface Company {
   website?: string;
   industry?: string;
   city?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  contact_telegram?: string;
   verified?: boolean;
   verification_note?: string;
 }
@@ -23,6 +26,9 @@ export default function CompanyPage() {
     website: "",
     industry: "it",
     city: "",
+    contact_email: "",
+    contact_phone: "",
+    contact_telegram: "",
   });
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -114,14 +120,42 @@ export default function CompanyPage() {
         </select>
       </div>
       <div className="field">
-        <label>Описание</label>
+        <label>Описание (обязательно, мин. 20 символов)</label>
         <textarea
           rows={4}
+          required
+          minLength={20}
           value={form.description || ""}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="Чем занимается компания (желательно для приглашений)"
+          placeholder="Чем занимается компания"
         />
       </div>
+      <div className="field">
+        <label>Контактный email</label>
+        <input
+          type="email"
+          value={form.contact_email || ""}
+          onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+          placeholder="hr@company.ru"
+        />
+      </div>
+      <div className="field">
+        <label>Контактный телефон</label>
+        <input
+          value={form.contact_phone || ""}
+          onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+          placeholder="+7…"
+        />
+      </div>
+      <div className="field">
+        <label>Telegram</label>
+        <input
+          value={form.contact_telegram || ""}
+          onChange={(e) => setForm({ ...form, contact_telegram: e.target.value })}
+          placeholder="@hr_team"
+        />
+      </div>
+      <p className="muted text-xs">Нужен хотя бы один способ связи — он попадёт в приглашения</p>
       {form.verified && <p className="text-sm font-semibold text-[var(--ok)]">Компания верифицирована</p>}
       {form.verification_note && <p className="muted text-xs">{form.verification_note}</p>}
       <button type="button" className="btn btn-ghost w-fit" onClick={requestVerify}>

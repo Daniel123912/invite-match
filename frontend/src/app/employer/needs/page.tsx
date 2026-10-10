@@ -30,9 +30,12 @@ export default function NeedsPage() {
   const [salaryGross, setSalaryGross] = useState(true);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
-  const [lastCreated, setLastCreated] = useState<{ specialization: string; grade: string; stack?: string } | null>(
-    null,
-  );
+  const [lastCreated, setLastCreated] = useState<{
+    id: number;
+    specialization: string;
+    grade: string;
+    stack?: string;
+  } | null>(null);
 
   async function load() {
     setItems(await api<Need[]>("/api/employer/needs"));
@@ -50,7 +53,7 @@ export default function NeedsPage() {
     setError("");
     setOk("");
     try {
-      await api("/api/employer/needs", {
+      const created = await api<{ id: number }>("/api/employer/needs", {
         method: "POST",
         body: {
           title,
@@ -63,7 +66,7 @@ export default function NeedsPage() {
           salary_gross: salaryGross,
         },
       });
-      setLastCreated({ specialization, grade, stack });
+      setLastCreated({ id: created.id, specialization, grade, stack });
       setOk("Потребность создана — откройте подборку");
       await load();
     } catch (err) {
@@ -72,7 +75,7 @@ export default function NeedsPage() {
   }
 
   const matchHref = lastCreated
-    ? `/employer/match?specialization=${lastCreated.specialization}&grade=${lastCreated.grade}&stack=${encodeURIComponent(lastCreated.stack || "")}`
+    ? `/employer/match?need_id=${lastCreated.id}&specialization=${lastCreated.specialization}&grade=${lastCreated.grade}&stack=${encodeURIComponent(lastCreated.stack || "")}`
     : "/employer/match";
 
   return (
@@ -183,7 +186,7 @@ export default function NeedsPage() {
                 )}
               </div>
               <Link
-                href={`/employer/match?specialization=${n.specialization}&grade=${n.grade}&stack=${encodeURIComponent(n.stack || "")}`}
+                href={`/employer/match?need_id=${n.id}&specialization=${n.specialization}&grade=${n.grade}&stack=${encodeURIComponent(n.stack || "")}`}
                 className="btn btn-ghost"
               >
                 Подборка

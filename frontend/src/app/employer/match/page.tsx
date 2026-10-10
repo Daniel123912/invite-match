@@ -28,13 +28,19 @@ export default function MatchPage() {
   const [grade, setGrade] = useState("middle");
   const [stack, setStack] = useState("Python");
   const [fspOnly, setFspOnly] = useState(false);
+  const [needId, setNeedId] = useState<number | null>(null);
   const [data, setData] = useState<MatchResponse | null>(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inviteFor, setInviteFor] = useState<number | null>(null);
   const [employerTasks, setEmployerTasks] = useState<{ id: number; title: string }[]>([]);
   const [taskId, setTaskId] = useState<number | "">("");
-  const [message, setMessage] = useState("Приглашаем вас на собеседование");
+  const [message, setMessage] = useState(
+    "Приглашаем вас на собеседование: расскажем о команде и задачах.",
+  );
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactTelegram, setContactTelegram] = useState("");
   const [salaryFrom, setSalaryFrom] = useState(200000);
   const [salaryTo, setSalaryTo] = useState(350000);
   const [error, setError] = useState("");
@@ -46,28 +52,51 @@ export default function MatchPage() {
       .catch(() => setEmployerTasks([]));
 
     const params = new URLSearchParams(window.location.search);
+    const nid = params.get("need_id");
     const s = params.get("specialization");
     const g = params.get("grade");
     const st = params.get("stack");
     if (s) setSpecialization(s);
     if (g) setGrade(g);
     if (st) setStack(st);
-    if (s && g) {
-      void runSearch(s, g, st || "", false);
+    if (nid) {
+      const id = Number(nid);
+      setNeedId(id);
+      void runSearch(s || specialization, g || grade, st || "", false, id);
+    } else if (s && g) {
+      void runSearch(s, g, st || "", false, null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runSearch(spec: string, gr: string, st: string, onlyFsp: boolean) {
+  async function runSearch(
+    spec: string,
+    gr: string,
+    st: string,
+    onlyFsp: boolean,
+    linkedNeedId: number | null = needId,
+  ) {
     setError("");
     setOk("");
     setLoading(true);
     setSearched(true);
     try {
-      const qs = new URLSearchParams({ specialization: spec, grade: gr });
-      if (st) qs.set("stack", st);
+      const qs = new URLSearchParams();
+      if (linkedNeedId) {
+        qs.set("need_id", String(linkedNeedId));
+        if (st) qs.set("stack", st);
+      } else {
+        qs.set("specialization", spec);
+        qs.set("grade", gr);
+        if (st) qs.set("stack", st);
+      }
       if (onlyFsp) qs.set("fsp_only", "true");
-      setData(await api<MatchResponse>(`/api/employer/match?${qs}`));
+      const result = await api<MatchResponse & { category: { specialization?: string; grade?: string } }>(
+        `/api/employer/match?${qs}`,
+      );
+      setData(result);
+      if (result.category?.specialization) setSpecialization(result.category.specialization);
+      if (result.category?.grade) setGrade(result.category.grade);
     } catch (err) {
       setData(null);
       setError(formatApiError(err));
@@ -78,7 +107,7 @@ export default function MatchPage() {
 
   async function search(e?: FormEvent) {
     e?.preventDefault();
-    await runSearch(specialization, grade, stack, fspOnly);
+    await runSearch(specialization, grade, stack, fspOnly, needId);
   }
 
   async function sendInvite(candidateId: number) {
@@ -92,7 +121,11 @@ export default function MatchPage() {
           message,
           salary_from: salaryFrom,
           salary_to: salaryTo,
+          ...(needId ? { need_id: needId } : {}),
           ...(taskId ? { employer_task_id: taskId } : {}),
+          ...(contactEmail.trim() ? { contact_email: contactEmail.trim() } : {}),
+          ...(contactPhone.trim() ? { contact_phone: contactPhone.trim() } : {}),
+          ...(contactTelegram.trim() ? { contact_telegram: contactTelegram.trim() } : {}),
         },
       });
       setOk("Приглашение отправлено");
@@ -111,10 +144,20 @@ export default function MatchPage() {
         </p>
       </div>
 
+      {needId && (
+        <p className="muted text-sm">
+          Подборка по сохранённой потребности #{needId}
+        </p>
+      )}
+
       <form onSubmit={search} className="panel grid gap-3 md:grid-cols-4">
         <div className="field">
           <label>Специализация</label>
-          <select value={specialization} onChange={(e) => setSpecialization(e.target.value)}>
+          <select
+            value={specialization}
+            onChange={(e) => setSpecialization(e.target.value)}
+            disabled={Boolean(needId)}
+          >
             {SPECIALIZATIONS.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
@@ -124,7 +167,11 @@ export default function MatchPage() {
         </div>
         <div className="field">
           <label>Грейд</label>
-          <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <select
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            disabled={Boolean(needId)}
+          >
             {GRADES.map((g) => (
               <option key={g.value} value={g.value}>
                 {g.label}
@@ -220,9 +267,11 @@ export default function MatchPage() {
               {inviteFor === c.id && (
                 <div className="mt-4 grid gap-3 border-t border-[var(--line)] pt-4 md:grid-cols-2">
                   <div className="field md:col-span-2">
-                    <label>Сообщение</label>
+                    <label>Описание предложения (мин. 20 символов)</label>
                     <textarea
                       rows={2}
+                      required
+                      minLength={20}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                     />
@@ -242,6 +291,29 @@ export default function MatchPage() {
                       value={salaryTo}
                       onChange={(e) => setSalaryTo(Number(e.target.value))}
                     />
+                  </div>
+                  <div className="field">
+                    <label>Контакт email (опц., иначе из компании)</label>
+                    <input
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      placeholder="hr@…"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Телефон / Telegram (опц.)</label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        placeholder="+7…"
+                      />
+                      <input
+                        value={contactTelegram}
+                        onChange={(e) => setContactTelegram(e.target.value)}
+                        placeholder="@hr"
+                      />
+                    </div>
                   </div>
                   <div className="field md:col-span-2">
                     <label>Задание кандидату (опционально)</label>

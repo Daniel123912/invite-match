@@ -14,6 +14,9 @@ interface Invitation {
   status: string;
   reason?: string;
   contacts_revoked?: boolean;
+  employer_contact_email?: string | null;
+  employer_contact_phone?: string | null;
+  employer_contact_telegram?: string | null;
 }
 
 export default function InvitationsPage() {
@@ -111,6 +114,16 @@ export default function InvitationsPage() {
                   </p>
                   {inv.reason && (
                     <p className="muted mt-2 text-xs leading-relaxed">Почему вы: {inv.reason}</p>
+                  )}
+                  {(inv.employer_contact_email ||
+                    inv.employer_contact_phone ||
+                    inv.employer_contact_telegram) && (
+                    <p className="mt-2 text-xs leading-relaxed">
+                      Связь с работодателем:{" "}
+                      {[inv.employer_contact_email, inv.employer_contact_phone, inv.employer_contact_telegram]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
                   )}
                 </div>
                 <span className={`badge ${inviteStatusClass(inv.status)}`}>

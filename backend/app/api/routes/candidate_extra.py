@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.candidate_serializers import candidate_to_out
@@ -111,6 +111,23 @@ def preview_resume_docx(
         raise HTTPException(400, "Превью доступно только для DOCX")
     raw = path.read_bytes()
     return HTMLResponse(resume_service.docx_preview_html(raw))
+
+
+@router.get("/profile/pdf")
+def download_profile_pdf(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """Сгенерировать PDF-профиль из данных кандидата."""
+    c = _get_candidate(user, db)
+    require_consent(c)
+    pdf_bytes = resume_service.generate_profile_pdf(c)
+    filename = f"profile_{c.id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/sandbox/run", response_model=SandboxRunResponse)

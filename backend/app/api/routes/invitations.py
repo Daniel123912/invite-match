@@ -41,6 +41,9 @@ def incoming(
                 company_name=company_name,
                 candidate_name=c.full_name,
                 contacts_revoked=bool(inv.contacts_revoked),
+                employer_contact_email=inv.contact_email,
+                employer_contact_phone=inv.contact_phone,
+                employer_contact_telegram=inv.contact_telegram,
             )
         )
     return result
@@ -89,4 +92,7 @@ def update_status(
         company_name=company_name,
         candidate_name=c.full_name,
         contacts_revoked=bool(inv.contacts_revoked),
+        employer_contact_email=inv.contact_email,
+        employer_contact_phone=inv.contact_phone,
+        employer_contact_telegram=inv.contact_telegram,
     )

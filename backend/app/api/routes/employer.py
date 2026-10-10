@@ -39,7 +39,7 @@ from app.schemas import (
     NeedOut,
     TaskAssignmentOut,
 )
-from app.core.privacy import can_reveal_contacts
+from app.core.privacy import assert_candidate_invitable, can_reveal_contacts
 from app.services import match_service
 
 router = APIRouter(prefix="/employer", tags=["employer"])
@@ -51,6 +51,25 @@ def _get_employer(user: User, db: Session) -> Employer:
     if not e:
         raise HTTPException(404, "Профиль работодателя не найден")
     return e
+
+
+def _has_contact(*, email: str | None, phone: str | None, telegram: str | None) -> bool:
+    return bool((email or "").strip() or (phone or "").strip() or (telegram or "").strip())
+
+
+def _require_company_contacts(body: CompanyUpdate) -> None:
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Название компании обязательно")
+    if len((body.description or "").strip()) < 20:
+        raise HTTPException(400, "Описание компании обязательно (минимум 20 символов)")
+    if not _has_contact(
+        email=body.contact_email, phone=body.contact_phone, telegram=body.contact_telegram
+    ):
+        raise HTTPException(
+            400,
+            "Укажите хотя бы один способ связи: email, телефон или Telegram",
+        )
 
 
 @router.get("/company", response_model=CompanyOut | None)
@@ -71,14 +90,18 @@ def upsert_company(
     db: Session = Depends(get_db),
 ):
     e = _get_employer(user, db)
+    _require_company_contacts(body)
+    payload = body.model_dump()
+    payload["name"] = body.name.strip()
+    payload["description"] = body.description.strip()
     company = None
     if e.company_id:
         company = db.query(Company).filter(Company.id == e.company_id).first()
     if company:
-        for field, value in body.model_dump().items():
+        for field, value in payload.items():
             setattr(company, field, value)
     else:
-        company = Company(**body.model_dump())
+        company = Company(**payload)
         db.add(company)
         db.flush()
         e.company_id = company.id
@@ -117,14 +140,34 @@ def list_needs(
 
 @router.get("/match", response_model=MatchResponse)
 def match(
-    specialization: Specialization = Query(...),
-    grade: GradeLevel = Query(...),
+    specialization: Specialization | None = Query(None),
+    grade: GradeLevel | None = Query(None),
     stack: str | None = Query(None),
     fsp_only: bool | None = Query(None),
+    need_id: int | None = Query(None),
     user: User = Depends(require_role(UserRole.EMPLOYER)),
     db: Session = Depends(get_db),
 ):
-    _get_employer(user, db)
+    e = _get_employer(user, db)
+    linked_need: EmployerNeed | None = None
+    if need_id is not None:
+        linked_need = (
+            db.query(EmployerNeed)
+            .filter(EmployerNeed.id == need_id, EmployerNeed.employer_id == e.id)
+            .first()
+        )
+        if not linked_need:
+            raise HTTPException(404, "Потребность не найдена")
+        if linked_need.is_suspicious:
+            raise HTTPException(400, "Потребность скрыта из-за жалоб — создайте новую")
+        specialization = linked_need.specialization
+        grade = linked_need.grade
+        if stack is None:
+            stack = linked_need.stack
+
+    if specialization is None or grade is None:
+        raise HTTPException(400, "Укажите need_id или specialization и grade")
+
     category, ranked = match_service.match_candidates(
         db, specialization, grade, stack_filter=stack, only_with_fsp=fsp_only
     )
@@ -194,10 +237,23 @@ def create_invitation(
 ):
     if body.salary_to < body.salary_from:
         raise HTTPException(400, "salary_to должен быть >= salary_from")
+    offer = (body.message or "").strip()
+    if len(offer) < 20:
+        raise HTTPException(400, "Описание предложения обязательно (минимум 20 символов)")
     e = _get_employer(user, db)
+    if not e.company_id or not e.company:
+        raise HTTPException(400, "Сначала заполните профиль компании")
+    company = e.company
+    if not (company.name or "").strip():
+        raise HTTPException(400, "Название компании обязательно")
+    if len((company.description or "").strip()) < 20:
+        raise HTTPException(400, "Заполните описание компании (минимум 20 символов)")
+
     candidate = db.query(Candidate).filter(Candidate.id == body.candidate_id).first()
     if not candidate:
         raise HTTPException(404, "Кандидат не найден")
+    assert_candidate_invitable(candidate)
+
     if body.need_id:
         need = (
             db.query(EmployerNeed)
@@ -208,17 +264,27 @@ def create_invitation(
             raise HTTPException(404, "Потребность не найдена")
         if need.is_suspicious:
             raise HTTPException(400, "Потребность скрыта из-за жалоб — создайте новую")
-    if e.company and not e.company.verified and not (e.company.description or "").strip():
-        raise HTTPException(400, "Заполните описание компании или запросите верификацию")
+
+    contact_email = (body.contact_email or company.contact_email or "").strip() or None
+    contact_phone = (body.contact_phone or company.contact_phone or "").strip() or None
+    contact_telegram = (body.contact_telegram or company.contact_telegram or "").strip() or None
+    if not _has_contact(email=contact_email, phone=contact_phone, telegram=contact_telegram):
+        raise HTTPException(
+            400,
+            "Укажите способ связи с работодателем в компании или в приглашении",
+        )
 
     reason = match_service.build_reason(candidate)
     inv = Invitation(
         employer_id=e.id,
         candidate_id=candidate.id,
         need_id=body.need_id,
-        message=body.message,
+        message=offer,
         salary_from=body.salary_from,
         salary_to=body.salary_to,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        contact_telegram=contact_telegram,
         reason=reason,
         status=InvitationStatus.SENT,
     )
@@ -245,7 +311,7 @@ def create_invitation(
     db.commit()
     db.refresh(inv)
 
-    company_name = e.company.name if e.company else None
+    company_name = company.name
     return _invitation_out(inv, company_name=company_name, candidate=candidate, reveal=False)
 
 
@@ -303,6 +369,9 @@ def _invitation_out(
         candidate_telegram=telegram,
         candidate_email=email,
         contacts_revoked=bool(inv.contacts_revoked),
+        employer_contact_email=inv.contact_email,
+        employer_contact_phone=inv.contact_phone,
+        employer_contact_telegram=inv.contact_telegram,
     )
 
 

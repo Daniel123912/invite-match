@@ -145,6 +145,23 @@ export default function ProfilePage() {
     }
   }
 
+  async function downloadProfilePdf() {
+    setError("");
+    try {
+      const res = await apiFetch("/api/candidate/profile/pdf");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "profile.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg("PDF-профиль скачан");
+    } catch (err) {
+      setError(formatApiError(err, "Не удалось сформировать PDF"));
+    }
+  }
+
   if (loadError) {
     return (
       <div className="panel empty-state">
@@ -167,7 +184,25 @@ export default function ProfilePage() {
       if (!f) return f;
       const next = { ...f, [key]: value };
       if (key === "consent_152fz" || key === "privacy_public") {
-        void save(next);
+        // Частичный PATCH — иначе отзыв согласия + контакты в полной форме даёт 400
+        void (async () => {
+          setMsg("");
+          setError("");
+          setSaving(true);
+          try {
+            const updated = await api<Profile>("/api/candidate/profile", {
+              method: "PATCH",
+              body: { [key]: value },
+            });
+            setForm(updated);
+            setMsg("Сохранено");
+          } catch (err) {
+            setError(formatApiError(err));
+            setForm(f);
+          } finally {
+            setSaving(false);
+          }
+        })();
       }
       return next;
     });
@@ -268,6 +303,14 @@ export default function ProfilePage() {
               onChange={(e) => set("resume_text", e.target.value)}
             />
           </div>
+          <button
+            type="button"
+            className="btn btn-ghost w-fit"
+            disabled={!form.consent_152fz}
+            onClick={() => void downloadProfilePdf()}
+          >
+            Скачать PDF-профиль
+          </button>
         </section>
 
         <section className="panel grid gap-4 md:grid-cols-2">

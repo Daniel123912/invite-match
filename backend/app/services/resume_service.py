@@ -1,5 +1,6 @@
 import re
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
@@ -63,3 +64,94 @@ def delete_storage(key: str | None) -> None:
     path = UPLOAD_DIR / key
     if path.is_file():
         path.unlink()
+
+
+def generate_profile_pdf(candidate) -> bytes:
+    """PDF-профиль кандидата из структурированных полей (не загруженный файл)."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    except ImportError as exc:
+        raise HTTPException(500, "reportlab не установлен") from exc
+
+    # DejaVu для кириллицы (часто есть в системе); иначе Helvetica + транслит-safe
+    font_name = "Helvetica"
+    for font_path in (
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    ):
+        try:
+            pdfmetrics.registerFont(TTFont("ProfileFont", font_path))
+            font_name = "ProfileFont"
+            break
+        except Exception:
+            continue
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ProfileTitle",
+        parent=styles["Heading1"],
+        fontName=font_name,
+        fontSize=16,
+        leading=20,
+    )
+    body_style = ParagraphStyle(
+        "ProfileBody",
+        parent=styles["Normal"],
+        fontName=font_name,
+        fontSize=11,
+        leading=15,
+    )
+
+    def esc(text: str) -> str:
+        return (
+            (text or "")
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    grade = candidate.confirmed_grade or candidate.selected_grade
+    grade_s = grade.value if grade else "—"
+    spec = candidate.specialization.value if candidate.specialization else "—"
+
+    story = [
+        Paragraph(esc(candidate.full_name or "Кандидат"), title_style),
+        Spacer(1, 8),
+        Paragraph(f"<b>Специализация:</b> {esc(spec)}", body_style),
+        Paragraph(f"<b>Грейд:</b> {esc(grade_s)}", body_style),
+        Paragraph(f"<b>Город:</b> {esc(candidate.city or '—')}", body_style),
+        Paragraph(f"<b>Стек:</b> {esc(candidate.stack or '—')}", body_style),
+    ]
+    if candidate.phone:
+        story.append(Paragraph(f"<b>Телефон:</b> {esc(candidate.phone)}", body_style))
+    if candidate.telegram:
+        story.append(Paragraph(f"<b>Telegram:</b> {esc(candidate.telegram)}", body_style))
+    story.extend(
+        [
+            Paragraph(
+                f"<b>Тест:</b> {candidate.test_score if candidate.test_score is not None else '—'}%",
+                body_style,
+            ),
+            Paragraph(
+                f"<b>ФСП:</b> {candidate.fsp_score if candidate.has_fsp_history else 'нет истории'}",
+                body_style,
+            ),
+            Spacer(1, 10),
+            Paragraph("<b>О себе</b>", body_style),
+            Paragraph(esc(candidate.about or "—"), body_style),
+            Spacer(1, 10),
+            Paragraph("<b>Резюме (текст)</b>", body_style),
+            Paragraph(esc((candidate.resume_text or "—")[:4000]), body_style),
+        ]
+    )
+
+    doc.build(story)
+    return buf.getvalue()
