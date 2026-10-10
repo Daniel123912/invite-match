@@ -67,11 +67,15 @@ def update_profile(
     data = body.model_dump(exclude_unset=True)
 
     # Согласие 152-ФЗ обрабатываем отдельно
+    consent_revoked = False
     if "consent_152fz" in data:
-        apply_consent(c, bool(data.pop("consent_152fz")))
+        granted = bool(data.pop("consent_152fz"))
+        apply_consent(c, granted)
+        consent_revoked = not granted
 
+    # При отзыве согласия в той же полной форме не требуем согласие на контакты
     contact_fields = {"phone", "telegram", "full_name", "city", "about", "resume_text"}
-    if contact_fields & data.keys():
+    if contact_fields & data.keys() and not consent_revoked:
         require_consent(c)
 
     if data.get("privacy_public") is True and not c.consent_152fz:
@@ -111,6 +115,10 @@ def submit_survey(
 ):
     c = _get_candidate(user, db)
     require_consent(c)
+    test_service.assert_grade_change_allowed(c, body.selected_grade)
+    # Смена опроса аннулирует незавершённые попытки (нельзя сдать старый грейд после смены)
+    if c.selected_grade != body.selected_grade or c.specialization != body.specialization:
+        test_service.abandon_open_attempts(db, c.id)
     c.industry = body.industry
     c.selected_grade = body.selected_grade
     specs = body.specializations or [body.specialization]
@@ -292,4 +300,7 @@ def revoke_contacts(
         company_name=company_name,
         candidate_name=c.full_name,
         contacts_revoked=bool(inv.contacts_revoked),
+        employer_contact_email=inv.contact_email,
+        employer_contact_phone=inv.contact_phone,
+        employer_contact_telegram=inv.contact_telegram,
     )
