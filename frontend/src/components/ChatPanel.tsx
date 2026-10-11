@@ -75,9 +75,11 @@ export function ChatPanel({
   }
 
   useEffect(() => {
-    setLoading(true);
     knownIds.current = new Set();
-    void load();
+    void Promise.resolve().then(() => {
+      setLoading(true);
+      void load();
+    });
     const t = setInterval(() => {
       void load({ silent: true });
     }, 8000);

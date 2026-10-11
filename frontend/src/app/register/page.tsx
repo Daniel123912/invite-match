@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useState, useTransition } from "react";
 import { api, formatApiError, setAuth, TokenResponse, API_URL } from "@/lib/api";
 
 type FieldErrors = {
@@ -23,12 +23,19 @@ function validateLocal(fullName: string, email: string, password: string, consen
   return errors;
 }
 
-export default function RegisterPage() {
+function roleFromQuery(value: string | null): "candidate" | "employer" {
+  return value === "employer" ? "employer" : "candidate";
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"candidate" | "employer">("candidate");
+  const [role, setRole] = useState<"candidate" | "employer">(() =>
+    roleFromQuery(searchParams.get("role")),
+  );
   const [consent, setConsent] = useState(false);
   const [birthDate, setBirthDate] = useState("");
   const [parentalConsent, setParentalConsent] = useState(false);
@@ -39,6 +46,10 @@ export default function RegisterPage() {
   const [pending, startTransition] = useTransition();
   const [confirmToken, setConfirmToken] = useState("");
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+
+  useEffect(() => {
+    setRole(roleFromQuery(searchParams.get("role")));
+  }, [searchParams]);
 
   // Вычисляем валидность email вне эффекта (derived state)
   const trimmedEmail = email.trim().toLowerCase();
@@ -342,5 +353,19 @@ export default function RegisterPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#F9F9F9] px-4 py-12">
+          <p className="text-[#6B7280] text-sm">Загрузка…</p>
+        </div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }

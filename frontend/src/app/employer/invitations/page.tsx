@@ -92,7 +92,7 @@ export default function EmployerInvitationsPage() {
   }
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
     const onRefresh = () => void loadInbox();
     window.addEventListener("fsp:chat-inbox-refresh", onRefresh);
     window.addEventListener("fsp:chat-new", onRefresh);
@@ -100,6 +100,8 @@ export default function EmployerInvitationsPage() {
       window.removeEventListener("fsp:chat-inbox-refresh", onRefresh);
       window.removeEventListener("fsp:chat-new", onRefresh);
     };
+    // load/loadInbox are stable page-local helpers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const threads = useMemo(() => {

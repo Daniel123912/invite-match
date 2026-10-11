@@ -270,7 +270,7 @@ export default function TestPage() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       flush();
     };
-  }, [started?.attempt_id]);
+  }, [started]);
 
   const answered = useMemo(
     () => (started ? started.questions.filter((q) => answers[q.id] !== undefined).length : 0),

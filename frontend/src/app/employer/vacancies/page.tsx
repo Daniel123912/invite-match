@@ -46,10 +46,12 @@ export default function MyVacanciesPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => {
-      setError(formatApiError(e));
-      setItems([]);
-    });
+    void Promise.resolve().then(() =>
+      load().catch((e) => {
+        setError(formatApiError(e));
+        setItems([]);
+      }),
+    );
   }, []);
 
   const counts = useMemo(() => {

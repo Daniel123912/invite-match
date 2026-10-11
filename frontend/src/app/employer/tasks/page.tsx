@@ -78,10 +78,12 @@ export default function EmployerTasksPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => {
-      setError(formatApiError(e));
-      setTasks([]);
-    });
+    void Promise.resolve().then(() =>
+      load().catch((e) => {
+        setError(formatApiError(e));
+        setTasks([]);
+      }),
+    );
   }, []);
 
   async function onSubmit(e: FormEvent) {

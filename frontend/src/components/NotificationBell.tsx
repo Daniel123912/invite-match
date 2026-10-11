@@ -69,7 +69,7 @@ export function NotificationBell() {
   }, [pushToast]);
 
   useEffect(() => {
-    void refresh();
+    void Promise.resolve().then(() => refresh());
     const t = setInterval(() => void refresh(), 10000);
     const onRefresh = () => void refresh();
     window.addEventListener("fsp:chat-inbox-refresh", onRefresh);
