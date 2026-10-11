@@ -41,10 +41,12 @@ export default function TasksPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => {
-      setError(formatApiError(e));
-      setTasks([]);
-    });
+    void Promise.resolve().then(() =>
+      load().catch((e) => {
+        setError(formatApiError(e));
+        setTasks([]);
+      }),
+    );
   }, []);
 
   function patchAnswer(id: number, patch: { code?: string; mcq?: number; text?: string }) {

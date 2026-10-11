@@ -63,10 +63,13 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const loaded = loadA11ySettings();
-    setSettings(loaded);
     applyA11yToDocument(loaded);
-    setHydrated(true);
-    setSpeechSupported(typeof window !== "undefined" && "speechSynthesis" in window);
+    const supported = "speechSynthesis" in window;
+    void Promise.resolve().then(() => {
+      setSettings(loaded);
+      setHydrated(true);
+      setSpeechSupported(supported);
+    });
   }, []);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!speechSupported) return;
-    refreshVoice();
+    void Promise.resolve().then(() => refreshVoice());
     window.speechSynthesis.addEventListener("voiceschanged", refreshVoice);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", refreshVoice);
   }, [speechSupported, refreshVoice]);

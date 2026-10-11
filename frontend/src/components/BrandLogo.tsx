@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
+import { cabinetPath, getRole, isAuthenticated, subscribeAuth } from "@/lib/api";
 
 type BrandLogoProps = {
   /** Если false — только картинка без ссылки (например, внутри h1) */
@@ -14,8 +18,25 @@ const sizeClass: Record<NonNullable<BrandLogoProps["size"]>, string> = {
   hero: "fsp-brand-logo fsp-brand-logo--hero",
 };
 
+function getHomeHrefSnapshot(): string {
+  if (!isAuthenticated()) return "/";
+  return cabinetPath(getRole()) ?? "/";
+}
+
+function getServerHomeHrefSnapshot(): string {
+  return "/";
+}
+
 export function BrandLogo({ link = true, className = "", size = "compact" }: BrandLogoProps) {
+  const href = useSyncExternalStore(
+    subscribeAuth,
+    getHomeHrefSnapshot,
+    getServerHomeHrefSnapshot,
+  );
+
   const img = (
+    // SVG brand mark — next/image adds little value here
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src="/logo_02w.svg"
       alt="ФСП Match"
@@ -28,8 +49,10 @@ export function BrandLogo({ link = true, className = "", size = "compact" }: Bra
 
   if (!link) return img;
 
+  const label = href === "/" ? "ФСП Match — на главную" : "ФСП Match — в кабинет";
+
   return (
-    <Link href="/" className="fsp-logo" aria-label="ФСП Match — на главную">
+    <Link href={href} className="fsp-logo" aria-label={label}>
       {img}
     </Link>
   );

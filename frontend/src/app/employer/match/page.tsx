@@ -72,23 +72,25 @@ export default function MatchPage() {
       .then(setEmployerTasks)
       .catch(() => setEmployerTasks([]));
 
-    const params = new URLSearchParams(window.location.search);
-    const nid = params.get("need_id");
-    const s = params.get("specialization");
-    const g = params.get("grade");
-    const st = params.get("stack");
-    if (s) setSpecialization(s);
-    if (g) setGrade(g);
-    if (st) setStack(st);
-    const inviteId = params.get("invite");
-    if (inviteId) setInviteFor(Number(inviteId));
-    if (nid) {
-      const id = Number(nid);
-      setNeedId(id);
-      void runSearch(s || specialization, g || grade, st || "", false, id);
-    } else if (s && g) {
-      void runSearch(s, g, st || "", false, null);
-    }
+    void Promise.resolve().then(() => {
+      const params = new URLSearchParams(window.location.search);
+      const nid = params.get("need_id");
+      const s = params.get("specialization");
+      const g = params.get("grade");
+      const st = params.get("stack");
+      if (s) setSpecialization(s);
+      if (g) setGrade(g);
+      if (st) setStack(st);
+      const inviteId = params.get("invite");
+      if (inviteId) setInviteFor(Number(inviteId));
+      if (nid) {
+        const id = Number(nid);
+        setNeedId(id);
+        void runSearch(s || specialization, g || grade, st || "", false, id);
+      } else if (s && g) {
+        void runSearch(s, g, st || "", false, null);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

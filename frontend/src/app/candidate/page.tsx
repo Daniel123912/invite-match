@@ -70,7 +70,8 @@ export default function CandidateAchievementsPage() {
   useEffect(() => {
     const userId = localStorage.getItem("user_id");
     recordCandidateVisit(userId);
-    setVisit(getVisitStats(userId));
+    const stats = getVisitStats(userId);
+    void Promise.resolve().then(() => setVisit(stats));
 
     api<Profile>("/api/candidate/profile")
       .then(async (p) => {
