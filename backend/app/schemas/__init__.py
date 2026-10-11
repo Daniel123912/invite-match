@@ -119,6 +119,7 @@ class CandidateOut(BaseModel):
     consent_152fz_at: Optional[datetime] = None
     resume_file_name: Optional[str] = None
     resume_content_type: Optional[str] = None
+    has_avatar: bool = False
     birth_date: Optional[date] = None
     parental_consent: bool = False
     specializations: list[Specialization] = []
@@ -255,6 +256,7 @@ class CompanyOut(BaseModel):
     contact_telegram: Optional[str] = None
     verified: bool = False
     verification_note: Optional[str] = None
+    has_avatar: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -282,10 +284,15 @@ class NeedOut(BaseModel):
     salary_gross: bool = True
     report_count: int = 0
     is_suspicious: bool = False
+    is_active: bool = True
     company_verified: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class NeedUpdate(BaseModel):
+    is_active: Optional[bool] = None
 
 
 class NeedReportRequest(BaseModel):

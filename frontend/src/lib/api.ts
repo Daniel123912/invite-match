@@ -31,6 +31,17 @@ export function getRole(): Role | null {
   return localStorage.getItem("role") as Role | null;
 }
 
+/** Сессия есть, если сохранены и токен, и роль (выход только через clearAuth). */
+export function isAuthenticated(): boolean {
+  return Boolean(getToken() && getRole());
+}
+
+export function cabinetPath(role: Role | null = getRole()): "/candidate" | "/employer" | null {
+  if (role === "employer") return "/employer";
+  if (role === "candidate" || role === "admin") return "/candidate";
+  return null;
+}
+
 /** Человекочитаемое сообщение об ошибке API */
 export function formatApiError(err: unknown, fallback = "Что-то пошло не так"): string {
   if (!(err instanceof Error) || !err.message) return fallback;

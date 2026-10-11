@@ -32,6 +32,7 @@ def candidate_to_out(c: Candidate) -> CandidateOut:
         consent_152fz_at=c.consent_152fz_at,
         resume_file_name=c.resume_file_name,
         resume_content_type=c.resume_content_type,
+        has_avatar=bool(c.avatar_storage_key),
         birth_date=bd,
         parental_consent=c.parental_consent,
         specializations=candidate_specializations(c),

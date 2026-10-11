@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, apiFetch, formatApiError } from "@/lib/api";
 import { labelGrade, labelSpec } from "@/lib/labels";
@@ -15,6 +15,7 @@ interface Profile {
   resume_text?: string;
   resume_file_name?: string | null;
   resume_content_type?: string | null;
+  has_avatar?: boolean;
   stack?: string;
   fsp_id?: string;
   privacy_public: boolean;
@@ -62,9 +63,15 @@ export default function ProfilePage() {
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarTick, setAvatarTick] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState("Просмотр");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const avatarUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     api<Profile>("/api/candidate/profile")
@@ -78,10 +85,53 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadAvatar() {
+      if (!form?.has_avatar) {
+        if (avatarUrlRef.current) {
+          URL.revokeObjectURL(avatarUrlRef.current);
+          avatarUrlRef.current = null;
+        }
+        setAvatarUrl(null);
+        return;
+      }
+      try {
+        const res = await apiFetch("/api/candidate/avatar");
+        const blob = await res.blob();
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        if (avatarUrlRef.current) URL.revokeObjectURL(avatarUrlRef.current);
+        avatarUrlRef.current = url;
+        setAvatarUrl(url);
+      } catch {
+        if (!cancelled) {
+          if (avatarUrlRef.current) {
+            URL.revokeObjectURL(avatarUrlRef.current);
+            avatarUrlRef.current = null;
+          }
+          setAvatarUrl(null);
+        }
+      }
+    }
+
+    void loadAvatar();
+    return () => {
+      cancelled = true;
+    };
+  }, [form?.has_avatar, avatarTick]);
+
+  useEffect(() => {
     return () => {
       if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
     };
   }, [previewPdfUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarUrlRef.current) URL.revokeObjectURL(avatarUrlRef.current);
+    };
+  }, []);
 
   async function save(next: Profile) {
     setMsg("");
@@ -133,9 +183,48 @@ export default function ProfilePage() {
     }
   }
 
+  async function onAvatarSelected(file: File | null) {
+    if (!file || !form) return;
+    setError("");
+    setMsg("");
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const updated = await api<Profile>("/api/candidate/avatar", {
+        method: "POST",
+        body: fd,
+      });
+      setForm((f) => (f ? { ...f, ...updated, phone: f.phone } : updated));
+      setAvatarTick((n) => n + 1);
+      setMsg("Фото профиля обновлено");
+    } catch (err) {
+      setError(formatApiError(err, "Не удалось загрузить фото"));
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
+  async function removeAvatar() {
+    if (!form?.has_avatar) return;
+    setError("");
+    setAvatarUploading(true);
+    try {
+      const updated = await api<Profile>("/api/candidate/avatar", { method: "DELETE" });
+      setForm((f) => (f ? { ...f, ...updated, phone: f.phone } : updated));
+      setAvatarTick((n) => n + 1);
+      setMsg("Фото удалено");
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
   function closePreview() {
     setPreviewOpen(false);
     setPreviewHtml(null);
+    setPreviewTitle("Просмотр");
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
     setPreviewPdfUrl(null);
   }
@@ -144,6 +233,7 @@ export default function ProfilePage() {
     if (!form?.resume_file_name) return;
     setError("");
     closePreview();
+    setPreviewTitle(form.resume_file_name);
     setPreviewOpen(true);
     try {
       if (isPdfResume(form.resume_content_type)) {
@@ -159,6 +249,22 @@ export default function ProfilePage() {
     } catch (err) {
       setPreviewOpen(false);
       setError(formatApiError(err, "Не удалось открыть файл"));
+    }
+  }
+
+  async function openProfilePdfPreview() {
+    if (!form?.consent_152fz) return;
+    setError("");
+    closePreview();
+    setPreviewTitle("PDF-профиль InviteMatch");
+    setPreviewOpen(true);
+    try {
+      const res = await apiFetch("/api/candidate/profile/pdf");
+      const blob = await res.blob();
+      setPreviewPdfUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setPreviewOpen(false);
+      setError(formatApiError(err, "Не удалось открыть PDF-профиль"));
     }
   }
 
@@ -255,8 +361,53 @@ export default function ProfilePage() {
   return (
     <>
       <header className="fsp-profile-hero">
-        <div className="fsp-avatar" aria-hidden>
-          {initials(form.full_name)}
+        <div>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            className="sr-only"
+            disabled={avatarUploading || !form.consent_152fz}
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              e.target.value = "";
+              void onAvatarSelected(f);
+            }}
+          />
+          <button
+            type="button"
+            className="fsp-avatar fsp-avatar-btn"
+            disabled={avatarUploading || !form.consent_152fz}
+            onClick={() => avatarInputRef.current?.click()}
+            aria-label={form.has_avatar ? "Сменить фото профиля" : "Добавить фото профиля"}
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt="" />
+            ) : (
+              <span aria-hidden>{initials(form.full_name)}</span>
+            )}
+            <span className="fsp-avatar-hint">
+              {avatarUploading ? "…" : form.has_avatar ? "сменить" : "фото"}
+            </span>
+          </button>
+          {form.has_avatar && (
+            <div className="fsp-avatar-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={avatarUploading}
+                onClick={() => void removeAvatar()}
+              >
+                Удалить фото
+              </button>
+            </div>
+          )}
+          {!form.consent_152fz && (
+            <p className="mt-2 text-xs text-[var(--danger)]">
+              Для фото нужно согласие на обработку ПДн
+            </p>
+          )}
         </div>
         <div className="fsp-profile-meta">
           <h1 className="fsp-profile-name">
@@ -444,14 +595,24 @@ export default function ProfilePage() {
               onChange={(e) => set("resume_text", e.target.value)}
             />
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost w-fit"
-            disabled={!form.consent_152fz}
-            onClick={() => void downloadProfilePdf()}
-          >
-            Скачать PDF-профиль
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-ghost w-fit"
+              disabled={!form.consent_152fz}
+              onClick={() => void openProfilePdfPreview()}
+            >
+              Просмотр PDF-профиля
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost w-fit"
+              disabled={!form.consent_152fz}
+              onClick={() => void downloadProfilePdf()}
+            >
+              Скачать PDF-профиль
+            </button>
+          </div>
         </section>
 
         <section className="fsp-soft-block !py-4">
@@ -490,7 +651,7 @@ export default function ProfilePage() {
         >
           <div className="panel flex max-h-[90vh] w-full max-w-4xl flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold">{form.resume_file_name}</h2>
+              <h2 className="text-lg font-bold">{previewTitle}</h2>
               <button type="button" className="btn btn-ghost" onClick={closePreview}>
                 Закрыть
               </button>

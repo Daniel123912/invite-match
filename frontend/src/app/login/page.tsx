@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState, useTransition } from "react";
-import { api, formatApiError, setAuth, TokenResponse } from "@/lib/api";
+import { FormEvent, useEffect, useState, useTransition } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
+import {
+  api,
+  cabinetPath,
+  formatApiError,
+  isAuthenticated,
+  setAuth,
+  TokenResponse,
+} from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +20,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    const path = cabinetPath();
+    if (path) router.replace(path);
+  }, [router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -37,9 +51,7 @@ export default function LoginPage() {
   return (
     <main className="auth-shell">
       <div className="auth-card">
-        <Link href="/" className="cabinet-brand">
-          FSP Match
-        </Link>
+        <BrandLogo size="auth" />
         <h1 className="cabinet-title mt-4">Вход</h1>
         <p className="muted mt-2 text-sm">Войдите, чтобы открыть кабинет кандидата или работодателя.</p>
 

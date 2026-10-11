@@ -34,7 +34,7 @@ from app.schemas import (
     TaskAssignmentOut,
     TaskSubmitRequest,
 )
-from app.services import resume_service, sandbox_service
+from app.services import avatar_service, resume_service, sandbox_service
 from app.services.minor_consent import parse_birth_date, require_parental_consent_if_minor
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
@@ -45,6 +45,51 @@ def _get_candidate(user: User, db: Session) -> Candidate:
     if not c:
         raise HTTPException(404, "Профиль кандидата не найден")
     return c
+
+
+@router.post("/avatar", response_model=CandidateOut)
+def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    require_consent(c)
+    avatar_service.delete_storage(c.avatar_storage_key)
+    key, ctype = avatar_service.save_avatar(file)
+    c.avatar_storage_key = key
+    c.avatar_content_type = ctype
+    db.commit()
+    db.refresh(c)
+    return candidate_to_out(c)
+
+
+@router.delete("/avatar", response_model=CandidateOut)
+def delete_avatar(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    avatar_service.delete_storage(c.avatar_storage_key)
+    c.avatar_storage_key = None
+    c.avatar_content_type = None
+    db.commit()
+    db.refresh(c)
+    return candidate_to_out(c)
+
+
+@router.get("/avatar")
+def get_avatar(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    if not c.avatar_storage_key:
+        raise HTTPException(404, "Фото не загружено")
+    path = avatar_service.UPLOAD_DIR / c.avatar_storage_key
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден")
+    return FileResponse(path, media_type=c.avatar_content_type or "image/jpeg")
 
 
 @router.post("/resume", response_model=CandidateOut)
@@ -150,7 +195,14 @@ def public_needs(
     db: Session = Depends(get_db),
 ):
     _get_candidate(user, db)
-    needs = db.query(EmployerNeed).filter(EmployerNeed.is_suspicious.is_(False)).all()
+    needs = (
+        db.query(EmployerNeed)
+        .filter(
+            EmployerNeed.is_suspicious.is_(False),
+            EmployerNeed.is_active.is_(True),
+        )
+        .all()
+    )
     out: list[PublicNeedOut] = []
     for n in needs:
         emp = n.employer
