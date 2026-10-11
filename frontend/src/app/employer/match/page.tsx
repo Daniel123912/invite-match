@@ -43,6 +43,7 @@ export default function MatchPage() {
   const [contactTelegram, setContactTelegram] = useState("");
   const [salaryFrom, setSalaryFrom] = useState(200000);
   const [salaryTo, setSalaryTo] = useState(350000);
+  const [salaryGross, setSalaryGross] = useState(true);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
 
@@ -121,6 +122,7 @@ export default function MatchPage() {
           message,
           salary_from: salaryFrom,
           salary_to: salaryTo,
+          salary_gross: salaryGross,
           ...(needId ? { need_id: needId } : {}),
           ...(taskId ? { employer_task_id: taskId } : {}),
           ...(contactEmail.trim() ? { contact_email: contactEmail.trim() } : {}),
@@ -292,6 +294,14 @@ export default function MatchPage() {
                       onChange={(e) => setSalaryTo(Number(e.target.value))}
                     />
                   </div>
+                  <label className="flex items-center gap-2 text-sm md:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={salaryGross}
+                      onChange={(e) => setSalaryGross(e.target.checked)}
+                    />
+                    Зарплата до вычета НДФЛ (gross). Снимите галочку, если сумма «на руки».
+                  </label>
                   <div className="field">
                     <label>Контакт email (опц., иначе из компании)</label>
                     <input

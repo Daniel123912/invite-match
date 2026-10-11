@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { api, apiFetch, formatApiError } from "@/lib/api";
 
 interface Profile {
@@ -336,55 +337,19 @@ export default function ProfilePage() {
           </label>
         </section>
 
-        <section className="panel grid gap-4 md:grid-cols-2">
-          <h3 className="md:col-span-2 text-sm font-bold uppercase tracking-wide text-[var(--muted)]">
-            ФСП и приватность
-          </h3>
-          <div className="field">
-            <label>FSP ID</label>
-            <input
-              value={form.fsp_id || ""}
-              onChange={(e) => set("fsp_id", e.target.value)}
-              placeholder="FSP-1001"
-            />
-          </div>
-          <div className="flex flex-col justify-end gap-3 rounded-xl border border-[var(--line)] bg-[var(--bg)] p-4 text-sm">
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={form.privacy_public}
-                onChange={(e) => set("privacy_public", e.target.checked)}
-              />
-              <span>
-                <span className="font-semibold">Профиль виден в подборке</span>
-                <span className="muted block text-xs">Работодатели видят категорию, не контакты</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={form.consent_152fz}
-                onChange={(e) => set("consent_152fz", e.target.checked)}
-              />
-              <span>
-                <span className="font-semibold">Согласие на обработку ПДн (152-ФЗ)</span>
-                {form.consent_152fz_at ? (
-                  <span className="muted block text-xs">
-                    От: {new Date(form.consent_152fz_at).toLocaleString("ru-RU")}
-                  </span>
-                ) : (
-                  <span className="block text-xs text-[var(--danger)]">
-                    Без согласия опрос и тест недоступны
-                  </span>
-                )}
-              </span>
-            </label>
-            <p className="muted text-xs">
-              ФСП: {form.has_fsp_history ? `${form.fsp_score} баллов` : "истории нет"}
+        <section className="panel !py-4">
+          <p className="text-sm">
+            FSP ID, видимость в подборке и согласие 152-ФЗ — в{" "}
+            <Link href="/candidate/settings" className="font-semibold text-[var(--brand)] underline">
+              Настройках
+            </Link>
+            .
+          </p>
+          {!form.consent_152fz && (
+            <p className="mt-2 text-xs text-[var(--danger)]">
+              Сейчас согласие снято — опрос и тест недоступны.
             </p>
-          </div>
+          )}
         </section>
 
         {(msg || error) && (
