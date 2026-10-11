@@ -5,11 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import api_router
-from app.config import get_settings
+from app.config import assert_secure_settings, get_settings
 from app.database import Base, engine
 from app.db_migrate import ensure_columns
 
 settings = get_settings()
+assert_secure_settings()
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -48,14 +49,16 @@ if not origins:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=settings.cors_origin_regex or None,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_kwargs: dict = {
+    "allow_origins": origins,
+    "allow_credentials": True,
+    "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    "allow_headers": ["Authorization", "Content-Type", "Accept"],
+}
+# Широкий regex только в DEBUG и только если явно задан в .env
+if settings.debug and settings.cors_origin_regex.strip():
+    cors_kwargs["allow_origin_regex"] = settings.cors_origin_regex.strip()
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(api_router)

@@ -2,6 +2,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import require_role
@@ -39,8 +40,13 @@ from app.schemas import (
     NeedOut,
     TaskAssignmentOut,
 )
-from app.core.privacy import assert_candidate_invitable, can_reveal_contacts
-from app.services import match_service
+from app.core.privacy import (
+    assert_candidate_invitable,
+    can_reveal_contacts,
+    contact_masks,
+    redact_pii,
+)
+from app.services import match_service, resume_service
 
 router = APIRouter(prefix="/employer", tags=["employer"])
 logger = logging.getLogger("fsp.ats")
@@ -70,6 +76,74 @@ def _require_company_contacts(body: CompanyUpdate) -> None:
             400,
             "Укажите хотя бы один способ связи: email, телефон или Telegram",
         )
+
+
+def _latest_invitation(db: Session, employer_id: int, candidate_id: int) -> Invitation | None:
+    return (
+        db.query(Invitation)
+        .filter(Invitation.employer_id == employer_id, Invitation.candidate_id == candidate_id)
+        .order_by(Invitation.id.desc())
+        .first()
+    )
+
+
+def _employer_can_view_candidate(
+    db: Session, employer: Employer, candidate: Candidate
+) -> Invitation | None:
+    """Публичный профиль или есть приглашение от этого работодателя.
+
+    Возвращает последнее приглашение (если есть) — нужно для раскрытия контактов.
+    """
+    inv = _latest_invitation(db, employer.id, candidate.id)
+    if inv is not None:
+        return inv
+    if candidate.consent_152fz and candidate.privacy_public and candidate.category_id:
+        return None
+    raise HTTPException(403, "Кандидат недоступен для просмотра")
+
+
+def _public_candidate_out(
+    c: Candidate,
+    *,
+    rank_score: float | None = None,
+    reason: str | None = None,
+    grade_confirmed: bool = False,
+    reveal: bool = False,
+    include_resume_text: bool = True,
+) -> CandidatePublicOut:
+    email = c.user.email if getattr(c, "user", None) else None
+    masks = contact_masks(
+        revealed=reveal,
+        phone=c.phone,
+        email=email,
+        telegram=c.telegram,
+    )
+    about = c.about if reveal else redact_pii(c.about)
+    resume_text = None
+    if include_resume_text and c.resume_text:
+        resume_text = c.resume_text if reveal else redact_pii(c.resume_text)
+    return CandidatePublicOut(
+        id=c.id,
+        full_name=c.full_name,
+        city=c.city,
+        about=about,
+        stack=c.stack,
+        specialization=c.specialization,
+        selected_grade=c.selected_grade,
+        confirmed_grade=c.confirmed_grade,
+        grade_confirmed=grade_confirmed,
+        category_id=c.category_id,
+        test_score=c.test_score,
+        fsp_score=c.fsp_score,
+        has_fsp_history=c.has_fsp_history,
+        rank_score=rank_score,
+        reason=reason,
+        has_resume_file=bool(c.resume_storage_key),
+        resume_file_name=c.resume_file_name if c.resume_storage_key else None,
+        resume_content_type=c.resume_content_type if c.resume_storage_key else None,
+        resume_text=resume_text,
+        **masks,
+    )
 
 
 @router.get("/company", response_model=CompanyOut | None)
@@ -175,6 +249,20 @@ def match(
         raise HTTPException(404, "Категория не найдена")
 
     count = db.query(Candidate).filter(Candidate.category_id == category.id).count()
+    candidates_out: list[CandidatePublicOut] = []
+    for c, score, reason in ranked:
+        inv = _latest_invitation(db, e.id, c.id)
+        reveal = bool(inv and can_reveal_contacts(inv, c))
+        candidates_out.append(
+            _public_candidate_out(
+                c,
+                rank_score=score,
+                reason=reason,
+                grade_confirmed=match_service.grade_confirmed_in_category(c, category, grade),
+                reveal=reveal,
+                include_resume_text=False,
+            )
+        )
     return MatchResponse(
         category=CategoryOut(
             id=category.id,
@@ -184,27 +272,80 @@ def match(
             description=category.description,
             candidates_count=count,
         ),
-        candidates=[
-            CandidatePublicOut(
-                id=c.id,
-                full_name=c.full_name,
-                city=c.city,
-                about=c.about,
-                stack=c.stack,
-                specialization=c.specialization,
-                selected_grade=c.selected_grade,
-                confirmed_grade=c.confirmed_grade,
-                grade_confirmed=match_service.grade_confirmed_in_category(c, category, grade),
-                category_id=c.category_id,
-                test_score=c.test_score,
-                fsp_score=c.fsp_score,
-                has_fsp_history=c.has_fsp_history,
-                rank_score=score,
-                reason=reason,
-            )
-            for c, score, reason in ranked
-        ],
+        candidates=candidates_out,
     )
+
+
+@router.get("/candidates/{candidate_id}", response_model=CandidatePublicOut)
+def get_candidate_dossier(
+    candidate_id: int,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    """Карточка кандидата для изучения: резюме/стек/тест; контакты — маски до accept."""
+    e = _get_employer(user, db)
+    c = (
+        db.query(Candidate)
+        .options(joinedload(Candidate.user))
+        .filter(Candidate.id == candidate_id)
+        .first()
+    )
+    if not c:
+        raise HTTPException(404, "Кандидат не найден")
+    inv = _employer_can_view_candidate(db, e, c)
+    reveal = bool(inv and can_reveal_contacts(inv, c))
+    reason = match_service.build_reason(c)
+    return _public_candidate_out(c, reason=reason, grade_confirmed=bool(c.confirmed_grade), reveal=reveal)
+
+
+@router.get("/candidates/{candidate_id}/resume/file")
+def employer_resume_file(
+    candidate_id: int,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    c = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not c:
+        raise HTTPException(404, "Кандидат не найден")
+    _employer_can_view_candidate(db, e, c)
+    if not c.resume_storage_key:
+        raise HTTPException(404, "Файл резюме не загружен")
+    path = resume_service.UPLOAD_DIR / c.resume_storage_key
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден")
+    return FileResponse(
+        path,
+        media_type=c.resume_content_type or "application/octet-stream",
+        filename=c.resume_file_name or path.name,
+    )
+
+
+@router.get("/candidates/{candidate_id}/resume/preview", response_class=HTMLResponse)
+def employer_resume_preview(
+    candidate_id: int,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    c = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not c:
+        raise HTTPException(404, "Кандидат не найден")
+    _employer_can_view_candidate(db, e, c)
+    if not c.resume_storage_key:
+        raise HTTPException(404, "Файл резюме не загружен")
+    path = resume_service.UPLOAD_DIR / c.resume_storage_key
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден")
+    name = (c.resume_file_name or c.resume_storage_key or "").lower()
+    if not name.endswith(".docx"):
+        raise HTTPException(400, "Превью доступно только для DOCX")
+    raw = path.read_bytes()
+    html = resume_service.docx_preview_html(raw)
+    inv = _latest_invitation(db, e.id, c.id)
+    if not (inv and can_reveal_contacts(inv, c)):
+        html = redact_pii(html) or html
+    return HTMLResponse(html)
 
 
 @router.get("/categories", response_model=list[CategoryOut])
@@ -344,14 +485,10 @@ def _invitation_out(
     candidate: Candidate | None,
     reveal: bool,
 ) -> InvitationOut:
-    email = None
-    phone = None
-    telegram = None
-    if reveal and candidate:
-        phone = candidate.phone
-        telegram = candidate.telegram
-        if candidate.user:
-            email = candidate.user.email
+    email = candidate.user.email if candidate and candidate.user else None
+    phone = candidate.phone if candidate else None
+    telegram = candidate.telegram if candidate else None
+    masks = contact_masks(revealed=reveal, phone=phone, email=email, telegram=telegram)
 
     return InvitationOut(
         id=inv.id,
@@ -367,10 +504,14 @@ def _invitation_out(
         created_at=inv.created_at,
         company_name=company_name,
         candidate_name=candidate.full_name if candidate else None,
-        candidate_phone=phone,
-        candidate_telegram=telegram,
-        candidate_email=email,
+        candidate_phone=masks["phone"],
+        candidate_telegram=masks["telegram"],
+        candidate_email=masks["email"],
+        contacts_revealed=masks["contacts_revealed"],
         contacts_revoked=bool(inv.contacts_revoked),
+        phone_display=masks["phone_display"],
+        email_display=masks["email_display"],
+        telegram_display=masks["telegram_display"],
         employer_contact_email=inv.contact_email,
         employer_contact_phone=inv.contact_phone,
         employer_contact_telegram=inv.contact_telegram,
@@ -531,7 +672,14 @@ def ats_webhook(
     db: Session = Depends(get_db),
 ):
     _get_employer(user, db)
-    logger.info("ATS webhook: %s payload=%s", body.event, body.payload)
+    # Не логируем тело — риск ПДн; только тип события и число ключей
+    keys = list(body.payload.keys()) if isinstance(body.payload, dict) else []
+    logger.info(
+        "ATS webhook: event=%s payload_keys=%s key_count=%s",
+        body.event,
+        keys[:20],
+        len(keys),
+    )
     return {"ok": True, "received": body.event}
 
 

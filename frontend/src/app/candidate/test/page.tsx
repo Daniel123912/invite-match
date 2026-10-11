@@ -40,7 +40,11 @@ interface HistoryItem {
   finished_at?: string | null;
 }
 
+/** Сколько вопросов показывать за раз — чтобы не было длинного скролла. */
+const QUESTIONS_PER_BLOCK = 4;
+
 const storageKey = (attemptId: number) => `fsp_test_answers_${attemptId}`;
+const blockStorageKey = (attemptId: number) => `fsp_test_block_${attemptId}`;
 
 function loadLocalAnswers(attemptId: number): Record<number, number> {
   try {
@@ -66,9 +70,43 @@ function saveLocalAnswers(attemptId: number, answers: Record<number, number>) {
 function clearLocalAnswers(attemptId: number) {
   try {
     localStorage.removeItem(storageKey(attemptId));
+    localStorage.removeItem(blockStorageKey(attemptId));
   } catch {
     /* ignore */
   }
+}
+
+function loadBlockIndex(attemptId: number, blockCount: number): number {
+  try {
+    const raw = localStorage.getItem(blockStorageKey(attemptId));
+    if (raw == null) return 0;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    return Math.min(Math.max(0, Math.floor(n)), Math.max(0, blockCount - 1));
+  } catch {
+    return 0;
+  }
+}
+
+function saveBlockIndex(attemptId: number, blockIndex: number) {
+  try {
+    localStorage.setItem(blockStorageKey(attemptId), String(blockIndex));
+  } catch {
+    /* ignore */
+  }
+}
+
+function firstIncompleteBlock(
+  questions: Question[],
+  answers: Record<number, number>,
+  perBlock: number,
+): number {
+  const blockCount = Math.max(1, Math.ceil(questions.length / perBlock));
+  for (let b = 0; b < blockCount; b++) {
+    const slice = questions.slice(b * perBlock, (b + 1) * perBlock);
+    if (slice.some((q) => answers[q.id] === undefined)) return b;
+  }
+  return Math.max(0, blockCount - 1);
 }
 
 function mergeAnswers(
@@ -93,6 +131,7 @@ export default function TestPage() {
   const [checking, setChecking] = useState(true);
   const [hasOpen, setHasOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [blockIndex, setBlockIndex] = useState(0);
   const answersRef = useRef(answers);
   const startedRef = useRef(started);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,10 +147,27 @@ export default function TestPage() {
   function applyAttempt(data: StartResponse) {
     const local = loadLocalAnswers(data.attempt_id);
     const merged = mergeAnswers(data.answers, local);
+    const blockCount = Math.max(1, Math.ceil(data.questions.length / QUESTIONS_PER_BLOCK));
+    const savedBlock = loadBlockIndex(data.attempt_id, blockCount);
+    const resumeBlock =
+      data.resumed || Object.keys(merged).length > 0
+        ? firstIncompleteBlock(data.questions, merged, QUESTIONS_PER_BLOCK)
+        : savedBlock;
     setStarted(data);
     setAnswers(merged);
+    setBlockIndex(resumeBlock);
     saveLocalAnswers(data.attempt_id, merged);
+    saveBlockIndex(data.attempt_id, resumeBlock);
     setHasOpen(true);
+  }
+
+  function goToBlock(next: number) {
+    if (!started) return;
+    const blockCount = Math.max(1, Math.ceil(started.questions.length / QUESTIONS_PER_BLOCK));
+    const clamped = Math.min(Math.max(0, next), blockCount - 1);
+    setBlockIndex(clamped);
+    saveBlockIndex(started.attempt_id, clamped);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function persistAnswers(
@@ -309,6 +365,7 @@ export default function TestPage() {
               setResult(null);
               setStarted(null);
               setAnswers({});
+              setBlockIndex(0);
             }}
           >
             Пройти ещё раз
@@ -340,6 +397,7 @@ export default function TestPage() {
         <div className="panel max-w-xl space-y-4">
           <ul className="muted space-y-2 text-sm">
             <li>· Вопросы зависят от выбранной специализации и грейда</li>
+            <li>· Тест идёт блоками по {QUESTIONS_PER_BLOCK} вопроса — без длинного списка сразу</li>
             <li>· Для прохождения нужно набрать не меньше 60%</li>
             <li>· Ответы сохраняются — можно вернуться после смены вкладки</li>
             <li>· После успеха категория появится в подборке работодателей</li>
@@ -385,6 +443,13 @@ export default function TestPage() {
 
   const total = started.questions.length;
   const progress = total ? Math.round((answered / total) * 100) : 0;
+  const blockCount = Math.max(1, Math.ceil(total / QUESTIONS_PER_BLOCK));
+  const safeBlock = Math.min(blockIndex, blockCount - 1);
+  const blockStart = safeBlock * QUESTIONS_PER_BLOCK;
+  const blockQuestions = started.questions.slice(blockStart, blockStart + QUESTIONS_PER_BLOCK);
+  const blockAnswered = blockQuestions.filter((q) => answers[q.id] !== undefined).length;
+  const blockComplete = blockAnswered === blockQuestions.length;
+  const isLastBlock = safeBlock >= blockCount - 1;
 
   return (
     <div className="space-y-4">
@@ -394,16 +459,27 @@ export default function TestPage() {
             {started.category_title}
           </h2>
           <p className="muted text-sm">
-            Вариант {started.variant_group} · отвечено {answered}/{total}
+            Вариант {started.variant_group} · блок {safeBlock + 1}/{blockCount} · отвечено{" "}
+            {answered}/{total}
             {started.resumed ? " · продолжение" : ""}
           </p>
           {started.integrity_hint && (
             <p className="muted text-xs">{started.integrity_hint}</p>
           )}
         </div>
-        <button className="btn btn-primary" onClick={submit} disabled={loading || answered < total}>
-          {loading ? "Отправка…" : "Сдать тест"}
-        </button>
+        {isLastBlock ? (
+          <button className="btn btn-primary" onClick={submit} disabled={loading || answered < total}>
+            {loading ? "Отправка…" : "Сдать тест"}
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary"
+            onClick={() => goToBlock(safeBlock + 1)}
+            disabled={!blockComplete}
+          >
+            Далее
+          </button>
+        )}
       </div>
 
       <div className="panel !py-3">
@@ -417,15 +493,46 @@ export default function TestPage() {
             style={{ width: `${progress}%` }}
           />
         </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Array.from({ length: blockCount }, (_, b) => {
+            const slice = started.questions.slice(
+              b * QUESTIONS_PER_BLOCK,
+              (b + 1) * QUESTIONS_PER_BLOCK,
+            );
+            const done = slice.every((q) => answers[q.id] !== undefined);
+            const active = b === safeBlock;
+            return (
+              <button
+                key={b}
+                type="button"
+                onClick={() => goToBlock(b)}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                  active
+                    ? "border-[var(--brand)] bg-[#eef5fc] text-[var(--ink)]"
+                    : done
+                      ? "border-[var(--ok)] text-[var(--ok)]"
+                      : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brand)]"
+                }`}
+                aria-current={active ? "step" : undefined}
+              >
+                Блок {b + 1}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
 
-      {started.questions.map((q, idx) => (
+      <p className="muted text-sm">
+        Вопросы {blockStart + 1}–{blockStart + blockQuestions.length} из {total}
+      </p>
+
+      {blockQuestions.map((q, idx) => (
         <div key={q.id} className="panel">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="badge">{q.topic}</span>
-            <span className="muted text-xs">Вопрос {idx + 1}</span>
+            <span className="muted text-xs">Вопрос {blockStart + idx + 1}</span>
           </div>
           <p className="font-semibold leading-snug">{q.text}</p>
           <div className="mt-3 grid gap-2">
@@ -453,6 +560,34 @@ export default function TestPage() {
           </div>
         </div>
       ))}
+
+      <div className="panel flex flex-wrap items-center justify-between gap-3 !py-3">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => goToBlock(safeBlock - 1)}
+          disabled={safeBlock === 0}
+        >
+          Назад
+        </button>
+        <p className="muted text-xs">
+          В блоке {blockAnswered}/{blockQuestions.length}
+        </p>
+        {isLastBlock ? (
+          <button className="btn btn-primary" onClick={submit} disabled={loading || answered < total}>
+            {loading ? "Отправка…" : "Сдать тест"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => goToBlock(safeBlock + 1)}
+            disabled={!blockComplete}
+          >
+            Далее
+          </button>
+        )}
+      </div>
     </div>
   );
 }

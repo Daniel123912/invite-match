@@ -2,20 +2,31 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { ContactMasks } from "@/components/ContactMasks";
 import { api, formatApiError } from "@/lib/api";
 import { GRADES, SPECIALIZATIONS } from "@/lib/labels";
+import { formatPhoneInput, phoneToE164 } from "@/lib/masks";
 
 interface Candidate {
   id: number;
   full_name: string;
   city?: string;
   stack?: string;
+  about?: string;
   test_score?: number;
   fsp_score: number;
   has_fsp_history: boolean;
   grade_confirmed?: boolean;
   rank_score?: number;
   reason?: string;
+  has_resume_file?: boolean;
+  contacts_revealed?: boolean;
+  phone?: string | null;
+  email?: string | null;
+  telegram?: string | null;
+  phone_display?: string;
+  email_display?: string;
+  telegram_display?: string;
 }
 
 interface MatchResponse {
@@ -60,6 +71,8 @@ export default function MatchPage() {
     if (s) setSpecialization(s);
     if (g) setGrade(g);
     if (st) setStack(st);
+    const inviteId = params.get("invite");
+    if (inviteId) setInviteFor(Number(inviteId));
     if (nid) {
       const id = Number(nid);
       setNeedId(id);
@@ -126,7 +139,9 @@ export default function MatchPage() {
           ...(needId ? { need_id: needId } : {}),
           ...(taskId ? { employer_task_id: taskId } : {}),
           ...(contactEmail.trim() ? { contact_email: contactEmail.trim() } : {}),
-          ...(contactPhone.trim() ? { contact_phone: contactPhone.trim() } : {}),
+          ...(contactPhone.trim()
+            ? { contact_phone: phoneToE164(contactPhone) || contactPhone.trim() }
+            : {}),
           ...(contactTelegram.trim() ? { contact_telegram: contactTelegram.trim() } : {}),
         },
       });
@@ -243,7 +258,7 @@ export default function MatchPage() {
           {data.candidates.map((c) => (
             <div key={c.id} className="panel">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-bold">{c.full_name}</h3>
                     {c.grade_confirmed === false && (
@@ -251,19 +266,38 @@ export default function MatchPage() {
                         Грейд не подтверждён
                       </span>
                     )}
+                    {c.has_resume_file && <span className="badge">Есть резюме</span>}
                   </div>
                   <p className="muted text-sm">
                     {c.city || "—"} · {c.stack || "стек не указан"}
                   </p>
+                  {c.about && (
+                    <p className="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{c.about}</p>
+                  )}
                   <p className="mt-2 text-sm">
                     Ранг <strong>{c.rank_score}</strong> · тест {c.test_score ?? "—"}% · ФСП{" "}
                     {c.has_fsp_history ? c.fsp_score : "нет истории"}
                   </p>
                   <p className="muted mt-1 text-xs">{c.reason}</p>
+                  <ContactMasks
+                    className="mt-3"
+                    revealed={Boolean(c.contacts_revealed)}
+                    phone={c.phone}
+                    email={c.email}
+                    telegram={c.telegram}
+                    phoneDisplay={c.phone_display}
+                    emailDisplay={c.email_display}
+                    telegramDisplay={c.telegram_display}
+                  />
                 </div>
-                <button className="btn btn-primary" onClick={() => setInviteFor(c.id)}>
-                  Пригласить
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/employer/candidates/${c.id}`} className="btn btn-ghost">
+                    Изучить
+                  </Link>
+                  <button className="btn btn-primary" onClick={() => setInviteFor(c.id)}>
+                    Пригласить
+                  </button>
+                </div>
               </div>
 
               {inviteFor === c.id && (
@@ -315,8 +349,9 @@ export default function MatchPage() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input
                         value={contactPhone}
-                        onChange={(e) => setContactPhone(e.target.value)}
-                        placeholder="+7…"
+                        onChange={(e) => setContactPhone(formatPhoneInput(e.target.value))}
+                        placeholder="+7 (___) ___-__-__"
+                        inputMode="tel"
                       />
                       <input
                         value={contactTelegram}
