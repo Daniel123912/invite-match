@@ -11,6 +11,7 @@ interface Invitation {
   message: string;
   salary_from: number;
   salary_to: number;
+  salary_gross?: boolean;
   status: string;
   reason?: string;
   contacts_revoked?: boolean;
@@ -110,7 +111,10 @@ export default function InvitationsPage() {
                   <p className="mt-2 text-sm leading-relaxed">{inv.message}</p>
                   <p className="mt-3 text-base font-bold text-[var(--brand)]">
                     {inv.salary_from.toLocaleString("ru-RU")} –{" "}
-                    {inv.salary_to.toLocaleString("ru-RU")} ₽
+                    {inv.salary_to.toLocaleString("ru-RU")} ₽{" "}
+                    <span className="text-sm font-semibold text-[var(--muted)]">
+                      {inv.salary_gross === false ? "(на руки / net)" : "(до вычета НДФЛ / gross)"}
+                    </span>
                   </p>
                   {inv.reason && (
                     <p className="muted mt-2 text-xs leading-relaxed">Почему вы: {inv.reason}</p>

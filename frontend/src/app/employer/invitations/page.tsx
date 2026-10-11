@@ -12,6 +12,7 @@ interface Invitation {
   message: string;
   salary_from: number;
   salary_to: number;
+  salary_gross?: boolean;
   status: string;
   candidate_phone?: string;
   candidate_telegram?: string;
@@ -115,7 +116,10 @@ export default function EmployerInvitationsPage() {
               <h3 className="section-title text-base">{inv.candidate_name || "Кандидат"}</h3>
               <p className="mt-1 text-sm">{inv.message}</p>
               <p className="mt-2 font-semibold text-[var(--brand)]">
-                {inv.salary_from.toLocaleString("ru-RU")} – {inv.salary_to.toLocaleString("ru-RU")} ₽
+                {inv.salary_from.toLocaleString("ru-RU")} – {inv.salary_to.toLocaleString("ru-RU")} ₽{" "}
+                <span className="text-sm font-normal text-[var(--muted)]">
+                  {inv.salary_gross === false ? "(net)" : "(gross)"}
+                </span>
               </p>
               {inv.status === "accepted" && !inv.contacts_revoked && (
                 <p className="mt-2 text-sm text-[var(--ok)]">

@@ -12,6 +12,7 @@ const primary = [
   { href: "/candidate/survey", label: "Опрос" },
   { href: "/candidate/test", label: "Тест" },
   { href: "/candidate/invitations", label: "Приглашения" },
+  { href: "/candidate/settings", label: "Настройки" },
 ];
 
 const extra = [
