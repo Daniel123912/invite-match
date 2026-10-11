@@ -9,6 +9,14 @@ export interface TokenResponse {
   user_id: number;
 }
 
+/** Событие для same-tab подписчиков (storage слушает только другие вкладки). */
+export const AUTH_CHANGE_EVENT = "fsp:auth";
+
+function notifyAuthChange() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
@@ -18,12 +26,14 @@ export function setAuth(data: TokenResponse) {
   localStorage.setItem("token", data.access_token);
   localStorage.setItem("role", data.role);
   localStorage.setItem("user_id", String(data.user_id));
+  notifyAuthChange();
 }
 
 export function clearAuth() {
   localStorage.removeItem("token");
   localStorage.removeItem("role");
   localStorage.removeItem("user_id");
+  notifyAuthChange();
 }
 
 export function getRole(): Role | null {
@@ -34,6 +44,17 @@ export function getRole(): Role | null {
 /** Сессия есть, если сохранены и токен, и роль (выход только через clearAuth). */
 export function isAuthenticated(): boolean {
   return Boolean(getToken() && getRole());
+}
+
+/** Подписка на смену сессии (same-tab + storage). Для useSyncExternalStore. */
+export function subscribeAuth(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(AUTH_CHANGE_EVENT, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(AUTH_CHANGE_EVENT, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
 }
 
 export function cabinetPath(role: Role | null = getRole()): "/candidate" | "/employer" | null {

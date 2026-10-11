@@ -1,4 +1,6 @@
 import re
+import secrets
+import string
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -13,6 +15,8 @@ from app.database import get_db
 from app.models import Candidate, Employer, User, UserRole
 from app.schemas import (
     ConfirmEmailRequest,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     RegisterRequest,
     RegisterResponse,
     TokenResponse,
@@ -26,6 +30,18 @@ settings = get_settings()
 _GENERIC_RESEND_MSG = (
     "Если аккаунт существует и email ещё не подтверждён, отправлена новая ссылка подтверждения."
 )
+_GENERIC_FORGOT_MSG = (
+    "Если аккаунт с таким email существует, на почту отправлен новый пароль."
+)
+
+
+def _generate_temp_password(length: int = 12) -> str:
+    """Пароль ≥8 символов с буквой и цифрой (как при регистрации)."""
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        pwd = "".join(secrets.choice(alphabet) for _ in range(length))
+        if re.search(r"[A-Za-z]", pwd) and re.search(r"\d", pwd):
+            return pwd
 
 
 def _token_response(user: User) -> TokenResponse:
@@ -160,6 +176,31 @@ def resend_confirmation(
         email=normalized,
         email_confirm_token=(
             plain if plain and settings.expose_email_confirm_token else None
+        ),
+    )
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Сброс пароля: генерируем новый. Без SMTP — temporary_password в ответе при EXPOSE_…"""
+    limiter.check(f"forgot-password:{client_ip(request)}", limit=5, window_sec=60)
+    normalized = body.email.lower().strip()
+    user = db.query(User).filter(User.email == normalized).first()
+    temp: str | None = None
+    if user and user.is_active:
+        temp = _generate_temp_password()
+        user.hashed_password = hash_password(temp)
+        db.commit()
+        # TODO: отправить temp на email, когда появится SMTP
+    return ForgotPasswordResponse(
+        message=_GENERIC_FORGOT_MSG,
+        email=normalized,
+        temporary_password=(
+            temp if temp and settings.expose_email_confirm_token else None
         ),
     )
 

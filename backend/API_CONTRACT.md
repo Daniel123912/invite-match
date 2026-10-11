@@ -12,6 +12,7 @@ Swagger: `http://localhost:8001/docs` (локально)
 | POST | `/auth/register` | `{ email, password (≥8, буква+цифра), role, full_name, consent_152fz: true, … }` | `{ message, email, email_confirm_token? }` — **без JWT** |
 | POST | `/auth/confirm-email` | `{ token }` | token + role (TTL токена, в БД только hash) |
 | POST | `/auth/resend-confirmation?email=` | — | всегда одинаковый `message` (без enumeration) |
+| POST | `/auth/forgot-password` | `{ email }` | всегда одинаковый `message`; `temporary_password?` только при `EXPOSE_EMAIL_CONFIRM_TOKEN` (локально без SMTP) |
 | POST | `/auth/login` | form: `username`=email, `password` | token + role (нужен подтверждённый email; rate limit) |
 | GET | `/auth/me` | — | user |
 | GET | `/fsp/{fsp_id}/achievements` | — | заглушка достижений ФСП |
