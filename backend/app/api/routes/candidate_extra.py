@@ -170,7 +170,12 @@ def public_needs(
                 salary_gross=n.salary_gross,
                 company_name=company.name,
                 company_verified=company.verified,
+                company_description=company.description,
+                company_city=company.city,
+                company_website=company.website,
+                company_industry=company.industry,
                 is_suspicious=n.is_suspicious,
+                created_at=n.created_at,
             )
         )
     return out

@@ -140,7 +140,7 @@ export default function TasksPage() {
           const a = answers[t.id] || {};
           const type = String(t.task_type || "").toLowerCase();
           return (
-            <article key={t.id} className="task-card panel space-y-4">
+            <article id={`task-${t.id}`} key={t.id} className="task-card panel space-y-4 scroll-mt-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

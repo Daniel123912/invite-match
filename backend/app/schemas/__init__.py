@@ -304,7 +304,12 @@ class PublicNeedOut(BaseModel):
     salary_gross: bool
     company_name: str
     company_verified: bool
+    company_description: Optional[str] = None
+    company_city: Optional[str] = None
+    company_website: Optional[str] = None
+    company_industry: Optional[Industry] = None
     is_suspicious: bool
+    created_at: Optional[datetime] = None
 
 
 # ── Match / Invitations ───────────────────────────────
