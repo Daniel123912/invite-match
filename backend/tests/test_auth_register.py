@@ -105,3 +105,54 @@ def test_login_demo_verified(client):
     )
     assert r.status_code == 200
     assert r.json()["email_verified"] is True
+
+
+def test_forgot_password_unknown_email(client):
+    r = client.post(
+        "/api/auth/forgot-password",
+        json={"email": "nobody_here@example.com"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "email" in body["message"].lower() or "пароль" in body["message"].lower()
+    assert body["temporary_password"] is None
+
+
+def test_forgot_password_resets_and_login(client):
+    email = "forgot_pw@example.com"
+    old_password = "demo1234"
+    reg = client.post(
+        "/api/auth/register",
+        json={
+            "email": email,
+            "password": old_password,
+            "role": "candidate",
+            "full_name": "Forgot User",
+            "consent_152fz": True,
+        },
+    )
+    assert reg.status_code == 201, reg.text
+    conf = client.post(
+        "/api/auth/confirm-email",
+        json={"token": reg.json()["email_confirm_token"]},
+    )
+    assert conf.status_code == 200
+
+    forgot = client.post("/api/auth/forgot-password", json={"email": email})
+    assert forgot.status_code == 200, forgot.text
+    temp = forgot.json()["temporary_password"]
+    assert temp
+    assert len(temp) >= 8
+
+    old_login = client.post(
+        "/api/auth/login",
+        data={"username": email, "password": old_password},
+    )
+    assert old_login.status_code == 401
+
+    new_login = client.post(
+        "/api/auth/login",
+        data={"username": email, "password": temp},
+    )
+    assert new_login.status_code == 200
+    assert new_login.json()["email_verified"] is True

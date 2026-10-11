@@ -62,6 +62,18 @@ class ConfirmEmailRequest(BaseModel):
     token: str = Field(min_length=8, max_length=128)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Одинаковый message всегда — без enumeration. temporary_password только локально."""
+
+    message: str
+    email: EmailStr
+    temporary_password: Optional[str] = None
+
+
 class UserOut(BaseModel):
     id: int
     email: EmailStr
