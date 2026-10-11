@@ -130,7 +130,7 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       if (patch.enabled === true && !prev.enabled) {
-        next.speech = patch.speech ?? true;
+        next.speech = patch.speech ?? false;
         next.contrast = patch.contrast ?? "high";
         next.fontScale = patch.fontScale ?? "lg";
       }

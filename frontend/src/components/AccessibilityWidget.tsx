@@ -73,7 +73,6 @@ export function AccessibilityWidget() {
               enabled
                 ? "Панель доступности открыта"
                 : "Версия для слабовидящих. Включите режим в панели.",
-              { force: true },
             );
           }
         }}
@@ -116,7 +115,6 @@ export function AccessibilityWidget() {
                 update({ enabled: on });
                 speak(
                   on ? "Режим для слабовидящих включён" : "Режим выключен. Обычный вид сайта.",
-                  { force: true },
                 );
               }}
             />
