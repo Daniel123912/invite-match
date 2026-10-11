@@ -40,11 +40,11 @@ def save_resume(file: UploadFile) -> tuple[str, str, str, str]:
     text = extract_text(raw, ctype)
     return key, file.filename or key, ctype, text
 
+
 def extract_text(raw: bytes, content_type: str) -> str:
     if content_type == "application/pdf":
         try:
             from pypdf import PdfReader
-            from io import BytesIO
 
             reader = PdfReader(BytesIO(raw))
             parts = [p.extract_text() or "" for p in reader.pages[:20]]
@@ -53,8 +53,6 @@ def extract_text(raw: bytes, content_type: str) -> str:
             return ""
     if content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         try:
-            from io import BytesIO
-
             from docx import Document
 
             doc = Document(BytesIO(raw))
@@ -78,90 +76,274 @@ def delete_storage(key: str | None) -> None:
         path.unlink()
 
 
+def _register_pdf_fonts() -> tuple[str, str]:
+    """Возвращает (regular, bold) — с кириллицей, если шрифты найдены."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    pairs = (
+        ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+        ("C:/Windows/Fonts/calibri.ttf", "C:/Windows/Fonts/calibrib.ttf"),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        ("/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
+    )
+    for regular, bold in pairs:
+        try:
+            pdfmetrics.registerFont(TTFont("ProfileFont", regular))
+            pdfmetrics.registerFont(TTFont("ProfileFontBold", bold))
+            return "ProfileFont", "ProfileFontBold"
+        except Exception:
+            continue
+    return "Helvetica", "Helvetica-Bold"
+
+
+def _esc(text: str) -> str:
+    return (
+        (text or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _paragraphs(text: str, style, limit: int = 6000):
+    from reportlab.platypus import Paragraph, Spacer
+
+    raw = (text or "").strip()[:limit]
+    if not raw:
+        return [Paragraph("—", style)]
+    blocks = []
+    for chunk in re.split(r"\n\s*\n", raw):
+        line = " ".join(chunk.split())
+        if line:
+            blocks.append(Paragraph(_esc(line), style))
+            blocks.append(Spacer(1, 4))
+    return blocks or [Paragraph("—", style)]
+
+
 def generate_profile_pdf(candidate) -> bytes:
-    """PDF-профиль кандидата из структурированных полей (не загруженный файл)."""
+    """Профессиональный PDF-профиль из структурированных полей кандидата."""
     try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_LEFT
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+        from reportlab.platypus import (
+            HRFlowable,
+            KeepTogether,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
     except ImportError as exc:
         raise HTTPException(500, "reportlab не установлен") from exc
 
-    # DejaVu для кириллицы (часто есть в системе); иначе Helvetica + транслит-safe
-    font_name = "Helvetica"
-    for font_path in (
-        "C:/Windows/Fonts/arial.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    ):
-        try:
-            pdfmetrics.registerFont(TTFont("ProfileFont", font_path))
-            font_name = "ProfileFont"
-            break
-        except Exception:
-            continue
+    font, font_bold = _register_pdf_fonts()
+
+    brand = colors.HexColor("#0e7490")
+    brand_dark = colors.HexColor("#155e75")
+    ink = colors.HexColor("#0b1524")
+    muted = colors.HexColor("#5a6a7c")
+    line = colors.HexColor("#c9d5e3")
+    soft = colors.HexColor("#f0f7fa")
 
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm)
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "ProfileTitle",
-        parent=styles["Heading1"],
-        fontName=font_name,
-        fontSize=16,
-        leading=20,
-    )
-    body_style = ParagraphStyle(
-        "ProfileBody",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=11,
-        leading=15,
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+        title=f"Резюме — {candidate.full_name or 'Кандидат'}",
+        author="InviteMatch",
     )
 
-    def esc(text: str) -> str:
-        return (
-            (text or "")
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
+    name_style = ParagraphStyle(
+        "CvName",
+        fontName=font_bold,
+        fontSize=22,
+        leading=26,
+        textColor=ink,
+        spaceAfter=2,
+    )
+    role_style = ParagraphStyle(
+        "CvRole",
+        fontName=font,
+        fontSize=11,
+        leading=14,
+        textColor=brand_dark,
+        spaceAfter=6,
+    )
+    contact_style = ParagraphStyle(
+        "CvContact",
+        fontName=font,
+        fontSize=9,
+        leading=12,
+        textColor=muted,
+    )
+    section_style = ParagraphStyle(
+        "CvSection",
+        fontName=font_bold,
+        fontSize=11,
+        leading=14,
+        textColor=brand_dark,
+        spaceBefore=10,
+        spaceAfter=4,
+        alignment=TA_LEFT,
+    )
+    body_style = ParagraphStyle(
+        "CvBody",
+        fontName=font,
+        fontSize=10,
+        leading=14,
+        textColor=ink,
+    )
+    meta_label = ParagraphStyle(
+        "CvMetaLabel",
+        fontName=font,
+        fontSize=8,
+        leading=10,
+        textColor=muted,
+    )
+    meta_value = ParagraphStyle(
+        "CvMetaValue",
+        fontName=font_bold,
+        fontSize=10,
+        leading=13,
+        textColor=ink,
+    )
+    footer_style = ParagraphStyle(
+        "CvFooter",
+        fontName=font,
+        fontSize=8,
+        leading=10,
+        textColor=muted,
+    )
 
     grade = candidate.confirmed_grade or candidate.selected_grade
     grade_s = grade.value if grade else "—"
     spec = candidate.specialization.value if candidate.specialization else "—"
+    full_name = (candidate.full_name or "Кандидат").strip()
+
+    contacts: list[str] = []
+    if candidate.city:
+        contacts.append(_esc(candidate.city))
+    if candidate.phone:
+        contacts.append(_esc(candidate.phone))
+    if candidate.telegram:
+        tg = candidate.telegram if str(candidate.telegram).startswith("@") else f"@{candidate.telegram}"
+        contacts.append(_esc(tg))
+    contact_line = "  ·  ".join(contacts) if contacts else "Контакты не указаны"
+
+    role_bits = [p for p in (spec, grade_s.title() if grade_s != "—" else None) if p and p != "—"]
+    role_line = " · ".join(role_bits) if role_bits else "Кандидат"
+
+    def section(title: str, *flowables):
+        return KeepTogether(
+            [
+                Paragraph(title.upper(), section_style),
+                HRFlowable(width="100%", thickness=1, color=line, spaceAfter=8),
+                *flowables,
+            ]
+        )
+
+    meta_rows = [
+        [
+            Paragraph("Специализация", meta_label),
+            Paragraph("Грейд", meta_label),
+            Paragraph("Город", meta_label),
+            Paragraph("Тест", meta_label),
+        ],
+        [
+            Paragraph(_esc(spec), meta_value),
+            Paragraph(_esc(grade_s), meta_value),
+            Paragraph(_esc(candidate.city or "—"), meta_value),
+            Paragraph(
+                f"{candidate.test_score:.0f}%"
+                if candidate.test_score is not None
+                else "—",
+                meta_value,
+            ),
+        ],
+    ]
+    meta_table = Table(meta_rows, colWidths=[42 * mm, 35 * mm, 40 * mm, 35 * mm])
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), soft),
+                ("BOX", (0, 0), (-1, -1), 0.5, line),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, line),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    accent = Table(
+        [[""]],
+        colWidths=[doc.width],
+        rowHeights=[3.2 * mm],
+    )
+    accent.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), brand)]))
 
     story = [
-        Paragraph(esc(candidate.full_name or "Кандидат"), title_style),
-        Spacer(1, 8),
-        Paragraph(f"<b>Специализация:</b> {esc(spec)}", body_style),
-        Paragraph(f"<b>Грейд:</b> {esc(grade_s)}", body_style),
-        Paragraph(f"<b>Город:</b> {esc(candidate.city or '—')}", body_style),
-        Paragraph(f"<b>Стек:</b> {esc(candidate.stack or '—')}", body_style),
+        accent,
+        Spacer(1, 10),
+        Paragraph(_esc(full_name), name_style),
+        Paragraph(_esc(role_line), role_style),
+        Paragraph(contact_line, contact_style),
+        Spacer(1, 12),
+        meta_table,
+        Spacer(1, 6),
     ]
-    if candidate.phone:
-        story.append(Paragraph(f"<b>Телефон:</b> {esc(candidate.phone)}", body_style))
-    if candidate.telegram:
-        story.append(Paragraph(f"<b>Telegram:</b> {esc(candidate.telegram)}", body_style))
+
+    if candidate.stack:
+        tags = [t.strip() for t in re.split(r"[,;|/]+", candidate.stack) if t.strip()]
+        stack_text = "  ·  ".join(_esc(t) for t in tags[:16]) if tags else _esc(candidate.stack)
+        story.append(section("Стек и навыки", Paragraph(stack_text, body_style)))
+
+    fsp_line = (
+        f"FSP: {_esc(str(candidate.fsp_score))}"
+        if candidate.has_fsp_history
+        else "FSP: нет истории"
+    )
+    story.append(
+        section(
+            "Оценка платформы",
+            Paragraph(
+                f"Результат теста: "
+                f"<b>{candidate.test_score:.0f}%</b>"
+                if candidate.test_score is not None
+                else "Результат теста: <b>—</b>",
+                body_style,
+            ),
+            Spacer(1, 2),
+            Paragraph(fsp_line, body_style),
+        )
+    )
+
+    if (candidate.about or "").strip():
+        story.append(section("О себе", *_paragraphs(candidate.about, body_style, 2500)))
+
+    resume = (candidate.resume_text or "").strip()
+    if resume:
+        story.append(section("Опыт и резюме", *_paragraphs(resume, body_style, 5500)))
+
     story.extend(
         [
-            Paragraph(
-                f"<b>Тест:</b> {candidate.test_score if candidate.test_score is not None else '—'}%",
-                body_style,
-            ),
-            Paragraph(
-                f"<b>ФСП:</b> {candidate.fsp_score if candidate.has_fsp_history else 'нет истории'}",
-                body_style,
-            ),
-            Spacer(1, 10),
-            Paragraph("<b>О себе</b>", body_style),
-            Paragraph(esc(candidate.about or "—"), body_style),
-            Spacer(1, 10),
-            Paragraph("<b>Резюме (текст)</b>", body_style),
-            Paragraph(esc((candidate.resume_text or "—")[:4000]), body_style),
+            Spacer(1, 16),
+            HRFlowable(width="100%", thickness=0.6, color=line, spaceAfter=6),
+            Paragraph("Сформировано в InviteMatch · профиль кандидата", footer_style),
         ]
     )
 

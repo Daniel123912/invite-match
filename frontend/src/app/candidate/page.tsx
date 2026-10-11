@@ -1,12 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  PACK_ACHIEVEMENTS,
+  achievementIconSrc,
+  getVisitStats,
+  isPackAchievementUnlocked,
+  packAchievementDetail,
+  packAchievementHref,
+  recordCandidateVisit,
+} from "@/lib/achievements";
 import { api, formatApiError } from "@/lib/api";
-import { labelGrade, labelSpec } from "@/lib/labels";
 
 interface Profile {
   full_name: string;
+  phone?: string;
+  city?: string;
+  stack?: string;
+  about?: string;
   specialization?: string;
   selected_grade?: string;
   confirmed_grade?: string;
@@ -18,20 +30,108 @@ interface Profile {
   consent_152fz?: boolean;
 }
 
-export default function CandidateHome() {
+interface FspAchievement {
+  id: number;
+  fsp_id: string;
+  title: string;
+  points: number;
+  achieved_at?: string | null;
+}
+
+interface FspProfile {
+  fsp_id: string;
+  has_history: boolean;
+  total_points: number;
+  achievements: FspAchievement[];
+  note?: string;
+}
+
+type Filter = "all" | "pack" | "fsp";
+
+type AchievementCard = {
+  id: string;
+  source: "pack" | "fsp";
+  title: string;
+  detail: string;
+  points?: number;
+  done: boolean;
+  href?: string;
+  actionLabel?: string;
+  iconSrc?: string;
+};
+
+export default function CandidateAchievementsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [fsp, setFsp] = useState<FspProfile | null>(null);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [visit, setVisit] = useState({ streak: 0, nightOwl: false });
 
   useEffect(() => {
+    const userId = localStorage.getItem("user_id");
+    recordCandidateVisit(userId);
+    setVisit(getVisitStats(userId));
+
     api<Profile>("/api/candidate/profile")
-      .then(setProfile)
+      .then(async (p) => {
+        setProfile(p);
+        if (p.fsp_id?.trim()) {
+          try {
+            const data = await api<FspProfile>(
+              `/api/fsp/${encodeURIComponent(p.fsp_id.trim())}/achievements`,
+            );
+            setFsp(data);
+          } catch {
+            setFsp(null);
+          }
+        } else {
+          setFsp(null);
+        }
+      })
       .catch((e) => setError(formatApiError(e)));
   }, []);
 
+  const cards = useMemo<AchievementCard[]>(() => {
+    if (!profile) return [];
+
+    const pack: AchievementCard[] = PACK_ACHIEVEMENTS.map((a) => {
+      const done = isPackAchievementUnlocked(a.id, profile, visit);
+      return {
+        id: a.id,
+        source: "pack" as const,
+        title: a.title,
+        detail: packAchievementDetail(a.id, a.description, visit),
+        done,
+        href: packAchievementHref(a.id),
+        actionLabel: done ? "Открыть" : "Добавить",
+        iconSrc: achievementIconSrc(a.icon),
+      };
+    });
+
+    const fromFsp: AchievementCard[] = (fsp?.achievements || []).map((a) => ({
+      id: `fsp-${a.id}`,
+      source: "fsp" as const,
+      title: a.title,
+      detail: a.achieved_at
+        ? `ФСП · ${new Date(a.achieved_at).toLocaleDateString("ru-RU")}`
+        : "Достижение из истории ФСП",
+      points: a.points,
+      done: true,
+      href: "/candidate/settings",
+      actionLabel: "Открыть",
+      iconSrc: achievementIconSrc("test_master.svg"),
+    }));
+
+    return [...pack, ...fromFsp];
+  }, [profile, fsp, visit]);
+
+  const visible = cards.filter((c) => filter === "all" || c.source === filter);
+  const doneCount = cards.filter((c) => c.done).length;
+
   if (error) {
     return (
-      <div className="panel empty-state">
-        <p className="text-[var(--danger)] font-semibold">Не удалось загрузить профиль</p>
+      <div className="fsp-soft-block empty-state">
+        <p className="font-semibold text-[var(--danger)]">Не удалось загрузить достижения</p>
         <p className="muted text-sm">{error}</p>
         <button className="btn btn-ghost mt-2" onClick={() => window.location.reload()}>
           Обновить
@@ -42,141 +142,115 @@ export default function CandidateHome() {
 
   if (!profile) {
     return (
-      <div className="panel empty-state">
-        <p className="muted">Загрузка кабинета…</p>
+      <div className="fsp-soft-block empty-state">
+        <p className="muted">Загрузка достижений…</p>
       </div>
     );
   }
 
-  const profileOk = Boolean(profile.full_name?.trim());
-  const surveyOk = Boolean(profile.specialization && profile.selected_grade);
-  const testOk = Boolean(profile.confirmed_grade);
-  const category =
-    testOk && profile.specialization
-      ? `${labelSpec(profile.specialization)} × ${labelGrade(profile.confirmed_grade)}`
-      : null;
-
-  const steps = [
-    {
-      ok: profileOk,
-      current: !profileOk,
-      label: "Профиль",
-      hint: profileOk ? "Данные заполнены" : "Укажите ФИО и контакты",
-      href: "/candidate/profile",
-    },
-    {
-      ok: surveyOk,
-      current: profileOk && !surveyOk,
-      label: "Опрос",
-      hint: surveyOk
-        ? `${labelSpec(profile.specialization)} · ${labelGrade(profile.selected_grade)}`
-        : "Выберите специализацию и грейд",
-      href: "/candidate/survey",
-    },
-    {
-      ok: testOk,
-      current: surveyOk && !testOk,
-      label: "Тест",
-      hint: testOk
-        ? `Сдано · ${profile.test_score ?? "—"}%`
-        : surveyOk
-          ? "Подтвердите категорию тестом"
-          : "Сначала пройдите опрос",
-      href: "/candidate/test",
-    },
-    {
-      ok: testOk,
-      current: testOk,
-      label: "Приглашения",
-      hint: testOk ? "Смотрите входящие офферы" : "Откроются после категории",
-      href: "/candidate/invitations",
-    },
-  ];
-
-  const doneCount = [profileOk, surveyOk, testOk].filter(Boolean).length;
-  const nextStep = steps.find((s) => s.current) || steps[steps.length - 1];
-
   return (
-    <div className="grid gap-4">
-      <section className="panel overflow-hidden !p-0">
-        <div className="relative px-5 py-6 md:px-7 md:py-7">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-90"
-            style={{
-              background:
-                "linear-gradient(120deg, color-mix(in srgb, var(--brand) 14%, white) 0%, transparent 55%), linear-gradient(220deg, color-mix(in srgb, var(--accent) 10%, white) 0%, transparent 45%)",
-            }}
-          />
-          <div className="relative">
-            <p className="badge w-fit">Прогресс {doneCount}/3</p>
-            <h2 className="cabinet-title mt-3 text-2xl md:text-3xl">
-              {profile.full_name?.trim() || "Добро пожаловать"}
-            </h2>
-            <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">
-              Категория присваивается только после опроса и теста — не по самоописанию резюме.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {category ? (
-                <span className="badge">Категория: {category}</span>
-              ) : (
-                <span className="badge">Категория ещё не присвоена</span>
-              )}
-              {profile.test_score != null && (
-                <span className="badge">Тест: {profile.test_score}%</span>
-              )}
-              {profile.has_fsp_history ? (
-                <span className="badge">ФСП: {profile.fsp_score} баллов</span>
-              ) : (
-                <span className="badge">Истории ФСП нет</span>
-              )}
+    <div className="fsp-achievements">
+      <div className="fsp-achievements-head">
+        <h1 className="fsp-achievements-title">
+          {doneCount} {doneCount === 1 ? "достижение" : doneCount < 5 ? "достижения" : "достижений"}
+        </h1>
+        <div className="fsp-achievements-filters" role="tablist" aria-label="Фильтр достижений">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "all"}
+            className={`fsp-filter-pill${filter === "all" ? " active" : ""}`}
+            onClick={() => setFilter("all")}
+          >
+            Все
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "pack"}
+            className={`fsp-filter-pill${filter === "pack" ? " active" : ""}`}
+            onClick={() => setFilter("pack")}
+          >
+            Invite Match
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "fsp"}
+            className={`fsp-filter-pill${filter === "fsp" ? " active" : ""}`}
+            onClick={() => setFilter("fsp")}
+          >
+            ФСП
+          </button>
+        </div>
+      </div>
+
+      {!profile.fsp_id && filter !== "pack" && (
+        <div className="fsp-soft-block !py-4 mb-1">
+          <p className="text-sm">
+            Чтобы подтянуть историю ФСП, укажите FSP ID в{" "}
+            <Link href="/candidate/settings" className="font-semibold text-[var(--brand)] underline">
+              настройках
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+
+      {profile.fsp_id && fsp && !fsp.has_history && filter !== "pack" && (
+        <div className="fsp-soft-block !py-4 mb-1">
+          <p className="text-sm muted">
+            По ID {fsp.fsp_id} история достижений пока пуста. В подборке учитывается тест.
+          </p>
+        </div>
+      )}
+
+      <ul className="fsp-achievements-list">
+        {visible.map((item, index) => (
+          <li
+            key={item.id}
+            className={`fsp-achievement-card${item.done ? " done" : " locked"}`}
+            style={{ animationDelay: `${Math.min(index, 6) * 0.05}s` }}
+          >
+            <div className={`fsp-achievement-icon${item.done ? "" : " locked"}`}>
+              {item.iconSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.iconSrc} alt="" width={40} height={40} className="fsp-achievement-svg" />
+              ) : null}
             </div>
-            <Link href={nextStep.href} className="btn btn-primary mt-5">
-              {testOk ? "Смотреть приглашения →" : `Далее: ${nextStep.label} →`}
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="stat-grid">
-        <div className="panel">
-          <p className="muted text-xs font-semibold uppercase tracking-wide">Специализация</p>
-          <p className="mt-2 text-lg font-bold">{labelSpec(profile.specialization)}</p>
-        </div>
-        <div className="panel">
-          <p className="muted text-xs font-semibold uppercase tracking-wide">Целевой грейд</p>
-          <p className="mt-2 text-lg font-bold">{labelGrade(profile.selected_grade)}</p>
-        </div>
-        <div className="panel">
-          <p className="muted text-xs font-semibold uppercase tracking-wide">Подтверждённый</p>
-          <p className="mt-2 text-lg font-bold">{labelGrade(profile.confirmed_grade)}</p>
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <h3 className="section-title">Следующие шаги</h3>
-          <p className="muted text-xs">Нажмите карточку, чтобы перейти</p>
-        </div>
-        <div className="step-rail">
-          {steps.map((s, i) => (
-            <Link
-              key={s.href}
-              href={s.href}
-              className={`panel step-card ${s.ok ? "done" : ""} ${s.current ? "current" : ""}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="muted text-xs font-bold">Шаг {i + 1}</span>
-                <span className={`status-dot ${s.ok ? "ok" : s.current ? "brand" : ""}`} />
+            <div className="fsp-achievement-body">
+              <div className="fsp-achievement-top">
+                <p className="fsp-achievement-title">{item.title}</p>
+                {item.points != null && (
+                  <span className="badge">{Math.round(item.points)} баллов</span>
+                )}
               </div>
-              <p className="text-base font-bold">{s.label}</p>
-              <p className="muted text-sm leading-snug">{s.hint}</p>
-              <span className="mt-auto text-sm font-semibold text-[var(--brand)]">
-                {s.ok ? "Открыть" : s.current ? "Продолжить →" : "Позже"}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
+              <p className="fsp-achievement-detail">{item.detail}</p>
+              <div className="fsp-achievement-actions">
+                {item.done ? (
+                  <span className="badge badge-ok">Получено</span>
+                ) : (
+                  <span className="badge">Заблокировано</span>
+                )}
+                {item.href && (
+                  <Link
+                    href={item.href}
+                    className={`btn ${item.done ? "btn-ghost" : "btn-primary"} fsp-achievement-cta`}
+                  >
+                    {item.actionLabel || "Добавить"}
+                  </Link>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+
+        {visible.length === 0 && (
+          <li className="fsp-achievement-card empty">
+            <p className="muted text-sm">В этом фильтре пока нет достижений</p>
+          </li>
+        )}
+      </ul>
     </div>
   );
 }

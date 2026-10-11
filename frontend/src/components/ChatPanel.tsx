@@ -18,12 +18,27 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "Админ",
 };
 
+function initials(name?: string) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
+
 export function ChatPanel({
   invitationId,
   onRead,
+  variant = "embedded",
+  peerName,
+  statusLabel,
 }: {
   invitationId: number;
   onRead?: () => void;
+  variant?: "embedded" | "messenger";
+  peerName?: string;
+  statusLabel?: string;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
@@ -33,6 +48,7 @@ export function ChatPanel({
   const myRole = getRole();
   const bottomRef = useRef<HTMLDivElement>(null);
   const knownIds = useRef<Set<number>>(new Set());
+  const messenger = variant === "messenger";
 
   async function load(opts?: { silent?: boolean }) {
     try {
@@ -89,13 +105,37 @@ export function ChatPanel({
     }
   }
 
+  const title = peerName || "Чат по приглашению";
+
   return (
-    <div className="chat-panel mt-4">
-      <div className="chat-panel-head">
-        <p className="section-title text-sm">Чат по приглашению</p>
-        <span className="muted text-xs">Обновляется автоматически</span>
+    <div className={messenger ? "chat-panel chat-panel-messenger" : "chat-panel mt-4"}>
+      <div className={messenger ? "fsp-msg-chat-head" : "chat-panel-head"}>
+        {messenger ? (
+          <>
+            <div className="fsp-msg-chat-peer">
+              <div className="fsp-msg-avatar lg" aria-hidden>
+                {initials(title)}
+              </div>
+              <div>
+                <p className="fsp-msg-chat-name">{title}</p>
+                <p className="fsp-msg-chat-status">{statusLabel || "в сети"}</p>
+              </div>
+            </div>
+            <div className="fsp-msg-chat-tools" aria-hidden>
+              <span className="fsp-msg-tool" />
+              <span className="fsp-msg-tool" />
+              <span className="fsp-msg-tool dots">⋮</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="section-title text-sm">Чат по приглашению</p>
+            <span className="muted text-xs">Обновляется автоматически</span>
+          </>
+        )}
       </div>
-      <div className="chat-thread">
+
+      <div className={messenger ? "chat-thread chat-thread-messenger" : "chat-thread"}>
         {loading && <p className="muted text-xs">Загрузка…</p>}
         {!loading && messages.length === 0 && !error && (
           <p className="muted text-xs">Напишите первое сообщение — собеседник увидит уведомление</p>
@@ -104,18 +144,25 @@ export function ChatPanel({
           const mine = m.sender_role === myRole;
           return (
             <div key={m.id} className={`chat-bubble ${mine ? "mine" : "theirs"}`}>
-              <div className="chat-bubble-meta">
-                <span>{mine ? "Вы" : ROLE_LABELS[m.sender_role] || m.sender_role}</span>
-                <span>{formatDateTime(m.created_at)}</span>
-              </div>
+              {!messenger && (
+                <div className="chat-bubble-meta">
+                  <span>{mine ? "Вы" : ROLE_LABELS[m.sender_role] || m.sender_role}</span>
+                  <span>{formatDateTime(m.created_at)}</span>
+                </div>
+              )}
               <p>{m.body}</p>
+              {messenger && (
+                <span className="chat-bubble-time">{formatDateTime(m.created_at)}</span>
+              )}
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
+
       {error && <p className="mt-2 text-xs font-semibold text-[var(--danger)]">{error}</p>}
-      <form onSubmit={send} className="chat-compose">
+
+      <form onSubmit={send} className={messenger ? "chat-compose chat-compose-messenger" : "chat-compose"}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}

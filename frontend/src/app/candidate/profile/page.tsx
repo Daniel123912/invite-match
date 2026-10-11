@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api, apiFetch, formatApiError } from "@/lib/api";
+import { labelGrade, labelSpec } from "@/lib/labels";
 import { formatPhoneInput, phoneToE164 } from "@/lib/masks";
 
 interface Profile {
@@ -23,6 +24,10 @@ interface Profile {
   fsp_score: number;
   birth_date?: string | null;
   parental_consent?: boolean;
+  specialization?: string;
+  selected_grade?: string;
+  confirmed_grade?: string;
+  test_score?: number;
 }
 
 function isPdfResume(mime?: string | null) {
@@ -31,6 +36,23 @@ function isPdfResume(mime?: string | null) {
 
 function isDocxResume(mime?: string | null) {
   return mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+}
+
+function initials(name?: string) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function stackTags(stack?: string) {
+  return (stack || "")
+    .split(/[,;|/]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export default function ProfilePage() {
@@ -173,9 +195,11 @@ export default function ProfilePage() {
     }
   }
 
+  const skills = useMemo(() => stackTags(form?.stack), [form?.stack]);
+
   if (loadError) {
     return (
-      <div className="panel empty-state">
+      <div className="fsp-soft-block empty-state">
         <p className="font-semibold text-[var(--danger)]">Не удалось загрузить профиль</p>
         <p className="muted text-sm">{loadError}</p>
       </div>
@@ -184,7 +208,7 @@ export default function ProfilePage() {
 
   if (!form) {
     return (
-      <div className="panel empty-state">
+      <div className="fsp-soft-block empty-state">
         <p className="muted">Загрузка профиля…</p>
       </div>
     );
@@ -195,7 +219,6 @@ export default function ProfilePage() {
       if (!f) return f;
       const next = { ...f, [key]: value };
       if (key === "consent_152fz" || key === "privacy_public") {
-        // Частичный PATCH — иначе отзыв согласия + контакты в полной форме даёт 400
         void (async () => {
           setMsg("");
           setError("");
@@ -220,65 +243,162 @@ export default function ProfilePage() {
   }
 
   const hasResumeFile = Boolean(form.resume_file_name);
+  const specLabel = form.specialization
+    ? labelSpec(form.specialization)
+    : "Специализация ещё не выбрана";
+  const gradeLabel = form.confirmed_grade
+    ? labelGrade(form.confirmed_grade)
+    : form.selected_grade
+      ? `${labelGrade(form.selected_grade)} (выбран)`
+      : "—";
 
   return (
     <>
-      <div className="mb-4">
-        <h2 className="section-title text-xl">
-          Профиль
-        </h2>
-        <p className="muted mt-1 text-sm">
-          Контакты скрыты от работодателей до принятия приглашения
-        </p>
-      </div>
+      <header className="fsp-profile-hero">
+        <div className="fsp-avatar" aria-hidden>
+          {initials(form.full_name)}
+        </div>
+        <div className="fsp-profile-meta">
+          <h1 className="fsp-profile-name">
+            <span>{form.full_name?.trim() || "ФИО не указано"}</span>
+            <span className="status-dot brand" aria-hidden />
+          </h1>
+          <p className="fsp-profile-spec">{specLabel}</p>
+          <p className="fsp-skills-label">навыки</p>
+          <div className="fsp-skill-row">
+            {skills.length ? (
+              skills.map((skill) => (
+                <span key={skill} className="fsp-skill ghost">
+                  {skill}
+                </span>
+              ))
+            ) : (
+              <span className="fsp-skill ghost">добавьте стек ниже</span>
+            )}
+          </div>
+          <p className="muted mt-3 text-sm">
+            Контакты скрыты от работодателей до принятия приглашения
+          </p>
+        </div>
+      </header>
 
       <form onSubmit={onSubmit} className="grid gap-4">
-        <section className="panel grid gap-4 md:grid-cols-2">
-          <h3 className="md:col-span-2 text-sm font-bold uppercase tracking-wide text-[var(--muted)]">
-            Основное
-          </h3>
-          <div className="field">
-            <label>ФИО</label>
-            <input value={form.full_name || ""} onChange={(e) => set("full_name", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Город</label>
-            <input value={form.city || ""} onChange={(e) => set("city", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Телефон</label>
-            <input
-              value={form.phone || ""}
-              onChange={(e) => set("phone", formatPhoneInput(e.target.value))}
-              placeholder="+7 (___) ___-__-__"
-              inputMode="tel"
-            />
-            <p className="muted mt-1 text-xs">Для работодателей — под маской до принятия оффера</p>
-          </div>
-          <div className="field">
-            <label>Telegram</label>
-            <input
-              value={form.telegram || ""}
-              onChange={(e) => set("telegram", e.target.value)}
-              placeholder="@username"
-            />
-          </div>
-          <div className="field md:col-span-2">
-            <label>Стек (через запятую)</label>
-            <input
-              value={form.stack || ""}
-              onChange={(e) => set("stack", e.target.value)}
-              placeholder="Python, FastAPI, PostgreSQL"
-            />
-          </div>
-          <div className="field md:col-span-2">
-            <label>О себе</label>
-            <textarea rows={3} value={form.about || ""} onChange={(e) => set("about", e.target.value)} />
+        <section className="fsp-soft-block">
+          <h2 className="fsp-soft-block-title">основная информация</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="field">
+              <label>ФИО</label>
+              <input value={form.full_name || ""} onChange={(e) => set("full_name", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Город</label>
+              <input value={form.city || ""} onChange={(e) => set("city", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Телефон</label>
+              <input
+                value={form.phone || ""}
+                onChange={(e) => set("phone", formatPhoneInput(e.target.value))}
+                placeholder="+7 (___) ___-__-__"
+                inputMode="tel"
+              />
+              <p className="muted mt-1 text-xs">Для работодателей — под маской до принятия оффера</p>
+            </div>
+            <div className="field">
+              <label>Telegram</label>
+              <input
+                value={form.telegram || ""}
+                onChange={(e) => set("telegram", e.target.value)}
+                placeholder="@username"
+              />
+            </div>
+            <div className="field md:col-span-2">
+              <label>Стек (через запятую)</label>
+              <input
+                value={form.stack || ""}
+                onChange={(e) => set("stack", e.target.value)}
+                placeholder="Python, FastAPI, PostgreSQL"
+              />
+            </div>
+            <div className="field">
+              <label>Дата рождения</label>
+              <input
+                type="date"
+                value={form.birth_date?.slice(0, 10) || ""}
+                onChange={(e) => set("birth_date", e.target.value || null)}
+              />
+            </div>
+            <label className="flex items-start gap-2 self-end pb-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={Boolean(form.parental_consent)}
+                onChange={(e) => set("parental_consent", e.target.checked)}
+              />
+              <span>Согласие родителей на обработку ПДн (16–17)</span>
+            </label>
           </div>
         </section>
 
-        <section className="panel grid gap-4">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-[var(--muted)]">Резюме</h3>
+        <section className="fsp-soft-block">
+          <h2 className="fsp-soft-block-title">о себе</h2>
+          <div className="field">
+            <label htmlFor="about">О себе</label>
+            <textarea
+              id="about"
+              rows={4}
+              value={form.about || ""}
+              onChange={(e) => set("about", e.target.value)}
+              placeholder="Кратко расскажите о себе, опыте и целях"
+            />
+          </div>
+        </section>
+
+        <section className="fsp-soft-block">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <h2 className="fsp-soft-block-title">достижения</h2>
+              <dl className="fsp-stat-grid">
+                <div className="fsp-stat">
+                  <dt>FSP Score</dt>
+                  <dd>{form.fsp_score ?? 0}</dd>
+                </div>
+                <div className="fsp-stat">
+                  <dt>История FSP</dt>
+                  <dd>{form.has_fsp_history ? "Есть" : "Нет"}</dd>
+                </div>
+              </dl>
+            </div>
+            <div>
+              <h2 className="fsp-soft-block-title">результаты тестов</h2>
+              <dl className="fsp-stat-grid">
+                <div className="fsp-stat">
+                  <dt>Балл теста</dt>
+                  <dd>{form.test_score != null ? `${form.test_score}%` : "—"}</dd>
+                </div>
+                <div className="fsp-stat">
+                  <dt>Категория</dt>
+                  <dd>
+                    {form.confirmed_grade
+                      ? `${labelSpec(form.specialization)} × ${gradeLabel}`
+                      : gradeLabel}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href="/candidate/test" className="btn btn-ghost">
+                  К тесту
+                </Link>
+                <Link href="/candidate/tasks" className="btn btn-ghost">
+                  К заданиям
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="fsp-soft-block grid gap-4">
+          <h2 className="fsp-soft-block-title">резюме</h2>
           <div className="field">
             <label>Файл (PDF или Word)</label>
             <p className="muted mb-2 text-xs">
@@ -334,30 +454,7 @@ export default function ProfilePage() {
           </button>
         </section>
 
-        <section className="panel grid gap-4 md:grid-cols-2">
-          <h3 className="md:col-span-2 text-sm font-bold uppercase tracking-wide text-[var(--muted)]">
-            Возраст (16–17)
-          </h3>
-          <div className="field">
-            <label>Дата рождения</label>
-            <input
-              type="date"
-              value={form.birth_date?.slice(0, 10) || ""}
-              onChange={(e) => set("birth_date", e.target.value || null)}
-            />
-          </div>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={Boolean(form.parental_consent)}
-              onChange={(e) => set("parental_consent", e.target.checked)}
-            />
-            <span>Согласие родителей на обработку ПДн</span>
-          </label>
-        </section>
-
-        <section className="panel !py-4">
+        <section className="fsp-soft-block !py-4">
           <p className="text-sm">
             FSP ID, видимость в подборке и согласие 152-ФЗ — в{" "}
             <Link href="/candidate/settings" className="font-semibold text-[var(--brand)] underline">
@@ -373,7 +470,7 @@ export default function ProfilePage() {
         </section>
 
         {(msg || error) && (
-          <div className="panel !py-3">
+          <div className="fsp-soft-block !py-3">
             {msg && <p className="text-sm font-semibold text-[var(--ok)]">{msg}</p>}
             {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
           </div>
