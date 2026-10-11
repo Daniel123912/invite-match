@@ -250,6 +250,7 @@ class Invitation(Base):
     message: Mapped[str] = mapped_column(Text)
     salary_from: Mapped[int] = mapped_column(Integer)
     salary_to: Mapped[int] = mapped_column(Integer)
+    salary_gross: Mapped[bool] = mapped_column(Boolean, default=True)
     # Способ связи с работодателем (снимок на момент приглашения)
     contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -360,3 +361,35 @@ class FspAchievement(Base):
     title: Mapped[str] = mapped_column(String(255))
     points: Mapped[float] = mapped_column(Float, default=0.0)
     achieved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class HackathonTask(Base):
+    """Публичные задания (без правильных ответов) — sql/aigul_84_TASKS_ONLY.sql."""
+
+    __tablename__ = "hackathon_tasks_public"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    specialization: Mapped[str] = mapped_column(String(50))
+    grade: Mapped[str] = mapped_column(String(20))
+    type: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(255))
+    prompt: Mapped[str] = mapped_column(Text)
+    language: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    starter_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    options_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    example: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class HackathonAnswerKey(Base):
+    """Закрытые ключи ответов — sql/aigul_84_ANSWERS_ONLY.sql. Не отдавать кандидатам."""
+
+    __tablename__ = "hackathon_task_answer_keys"
+
+    task_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("hackathon_tasks_public.id", ondelete="CASCADE"), primary_key=True
+    )
+    answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_solution: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    criteria: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    max_score: Mapped[int] = mapped_column(Integer, default=1)

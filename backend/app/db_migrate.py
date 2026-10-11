@@ -24,6 +24,11 @@ def ensure_columns() -> None:
         ("invitations", "contact_email", "VARCHAR(255)"),
         ("invitations", "contact_phone", "VARCHAR(50)"),
         ("invitations", "contact_telegram", "VARCHAR(100)"),
+        (
+            "invitations",
+            "salary_gross",
+            "BOOLEAN DEFAULT 1" if dialect == "sqlite" else "BOOLEAN DEFAULT TRUE",
+        ),
         ("companies", "verified", bool_default),
         ("companies", "verification_note", "VARCHAR(255)"),
         ("companies", "contact_email", "VARCHAR(255)"),

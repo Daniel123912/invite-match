@@ -90,7 +90,25 @@ def test_submit_confirms_grade_from_attempt_category(client, db):
     assert cand.confirmed_grade == GradeLevel.JUNIOR
 
 
-def test_second_start_abandons_previous(client, db):
+def _reset_new_candidate(db) -> Candidate:
+    user = db.query(User).filter(User.email == "new@demo.ru").first()
+    cand = db.query(Candidate).filter(Candidate.user_id == user.id).first()
+    cand.consent_152fz = True
+    cand.privacy_public = True
+    cand.confirmed_grade = None
+    cand.category_id = None
+    cand.test_score = None
+    cand.selected_grade = None
+    cand.specialization = None
+    cand.last_grade_change_at = None
+    db.query(TestAttempt).filter(TestAttempt.candidate_id == cand.id).delete()
+    db.commit()
+    return cand
+
+
+def test_second_start_resumes_same_attempt(client, db):
+    """Повторный старт той же категории продолжает незавершённую попытку."""
+    _reset_new_candidate(db)
     h = _login(client, "new@demo.ru")
     client.post(
         "/api/candidate/survey",
@@ -100,12 +118,48 @@ def test_second_start_abandons_previous(client, db):
     a1 = client.post("/api/candidate/test/start", headers=h)
     assert a1.status_code == 200
     id1 = a1.json()["attempt_id"]
+    qid = a1.json()["questions"][0]["id"]
+
+    prog = client.post(
+        f"/api/candidate/test/{id1}/progress",
+        headers=h,
+        json={"answers": {qid: 0}},
+    )
+    assert prog.status_code == 200, prog.text
+
     a2 = client.post("/api/candidate/test/start", headers=h)
     assert a2.status_code == 200
-    id2 = a2.json()["attempt_id"]
-    assert id1 != id2
+    assert a2.json()["attempt_id"] == id1
+    assert a2.json()["resumed"] is True
+    assert a2.json()["answers"].get(str(qid)) == 0 or a2.json()["answers"].get(qid) == 0
 
+    cur = client.get("/api/candidate/test/current", headers=h)
+    assert cur.status_code == 200
+    assert cur.json()["attempt_id"] == id1
+
+
+def test_survey_change_abandons_open_attempt(client, db):
+    _reset_new_candidate(db)
+    h = _login(client, "new@demo.ru")
+    s1 = client.post(
+        "/api/candidate/survey",
+        headers=h,
+        json={"industry": "it", "specialization": "backend", "selected_grade": "middle"},
+    )
+    assert s1.status_code == 200, s1.text
+    a1 = client.post("/api/candidate/test/start", headers=h)
+    assert a1.status_code == 200
+    id1 = a1.json()["attempt_id"]
+
+    s2 = client.post(
+        "/api/candidate/survey",
+        headers=h,
+        json={"industry": "it", "specialization": "backend", "selected_grade": "junior"},
+    )
+    assert s2.status_code == 200, s2.text
+    db.expire_all()
     old = db.query(TestAttempt).filter(TestAttempt.id == id1).first()
+    assert old is not None
     assert old.finished_at is not None
     assert old.passed is False
 
