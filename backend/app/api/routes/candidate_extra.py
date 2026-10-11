@@ -3,12 +3,13 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.candidate_serializers import candidate_to_out
 from app.core.privacy import require_consent
+from app.core.rate_limit import client_ip, limiter
 from app.core.security import require_role
 from app.database import get_db
 from app.models import (
@@ -33,7 +34,7 @@ from app.schemas import (
     TaskAssignmentOut,
     TaskSubmitRequest,
 )
-from app.services import resume_service, sandbox_service
+from app.services import avatar_service, resume_service, sandbox_service
 from app.services.minor_consent import parse_birth_date, require_parental_consent_if_minor
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
@@ -44,6 +45,51 @@ def _get_candidate(user: User, db: Session) -> Candidate:
     if not c:
         raise HTTPException(404, "Профиль кандидата не найден")
     return c
+
+
+@router.post("/avatar", response_model=CandidateOut)
+def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    require_consent(c)
+    avatar_service.delete_storage(c.avatar_storage_key)
+    key, ctype = avatar_service.save_avatar(file)
+    c.avatar_storage_key = key
+    c.avatar_content_type = ctype
+    db.commit()
+    db.refresh(c)
+    return candidate_to_out(c)
+
+
+@router.delete("/avatar", response_model=CandidateOut)
+def delete_avatar(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    avatar_service.delete_storage(c.avatar_storage_key)
+    c.avatar_storage_key = None
+    c.avatar_content_type = None
+    db.commit()
+    db.refresh(c)
+    return candidate_to_out(c)
+
+
+@router.get("/avatar")
+def get_avatar(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    if not c.avatar_storage_key:
+        raise HTTPException(404, "Фото не загружено")
+    path = avatar_service.UPLOAD_DIR / c.avatar_storage_key
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден")
+    return FileResponse(path, media_type=c.avatar_content_type or "image/jpeg")
 
 
 @router.post("/resume", response_model=CandidateOut)
@@ -133,11 +179,13 @@ def download_profile_pdf(
 @router.post("/sandbox/run", response_model=SandboxRunResponse)
 def sandbox_run(
     body: SandboxRunRequest,
+    request: Request,
     user: User = Depends(require_role(UserRole.CANDIDATE)),
     db: Session = Depends(get_db),
 ):
     _get_candidate(user, db)
-    result = sandbox_service.run_python(body.code, body.stdin)
+    limiter.check(f"sandbox:{user.id}:{client_ip(request)}", limit=15, window_sec=60)
+    result = sandbox_service.run(body.code, body.stdin, body.language)
     return SandboxRunResponse(**result)
 
 
@@ -147,7 +195,14 @@ def public_needs(
     db: Session = Depends(get_db),
 ):
     _get_candidate(user, db)
-    needs = db.query(EmployerNeed).filter(EmployerNeed.is_suspicious.is_(False)).all()
+    needs = (
+        db.query(EmployerNeed)
+        .filter(
+            EmployerNeed.is_suspicious.is_(False),
+            EmployerNeed.is_active.is_(True),
+        )
+        .all()
+    )
     out: list[PublicNeedOut] = []
     for n in needs:
         emp = n.employer
@@ -167,7 +222,12 @@ def public_needs(
                 salary_gross=n.salary_gross,
                 company_name=company.name,
                 company_verified=company.verified,
+                company_description=company.description,
+                company_city=company.city,
+                company_website=company.website,
+                company_industry=company.industry,
                 is_suspicious=n.is_suspicious,
+                created_at=n.created_at,
             )
         )
     return out
@@ -219,10 +279,12 @@ def my_tasks(
 def submit_task(
     assignment_id: int,
     body: TaskSubmitRequest,
+    request: Request,
     user: User = Depends(require_role(UserRole.CANDIDATE)),
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
+    limiter.check(f"task-submit:{user.id}:{client_ip(request)}", limit=20, window_sec=60)
     a = (
         db.query(TaskAssignment)
         .filter(TaskAssignment.id == assignment_id, TaskAssignment.candidate_id == c.id)

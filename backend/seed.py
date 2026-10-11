@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from datetime import datetime, timezone
 
+from app.config import get_settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
 from app.db_migrate import ensure_columns
@@ -396,10 +397,17 @@ def seed() -> None:
             for title, points in items:
                 db.add(FspAchievement(fsp_id=fsp_id, title=title, points=points))
 
+        settings = get_settings()
+        if not settings.allow_demo_seed:
+            db.commit()
+            print("Seed OK (categories/questions). Demo users skipped (ALLOW_DEMO_SEED=false).")
+            return
+
+        demo_password = settings.demo_password
         # Demo employer
         emp_user = User(
             email="employer@demo.ru",
-            hashed_password=hash_password("demo1234"),
+            hashed_password=hash_password(demo_password),
             role=UserRole.EMPLOYER,
             email_verified=True,
         )
@@ -468,7 +476,7 @@ def seed() -> None:
         for email, name, spec, grade, stack, fsp_id, score in demo_candidates:
             u = User(
                 email=email,
-                hashed_password=hash_password("demo1234"),
+                hashed_password=hash_password(demo_password),
                 role=UserRole.CANDIDATE,
                 email_verified=True,
             )
@@ -502,13 +510,19 @@ def seed() -> None:
                     consent_152fz_at=consent_at,
                     phone="+79001112233" if email == "candidate@demo.ru" else None,
                     telegram="@demo_cand" if email == "candidate@demo.ru" else None,
+                    resume_text=(
+                        "Backend-разработчик, Python/FastAPI, PostgreSQL.\n"
+                        "Опыт: API, тесты, CI. Пишите на candidate@demo.ru или +79001112233 / @demo_cand"
+                        if email == "candidate@demo.ru"
+                        else f"Демо-резюме: {name}. Стек: {stack}."
+                    ),
                 )
             )
 
         # Fresh candidate without category (for full flow demo)
         fresh = User(
             email="new@demo.ru",
-            hashed_password=hash_password("demo1234"),
+            hashed_password=hash_password(demo_password),
             role=UserRole.CANDIDATE,
             email_verified=True,
         )
@@ -520,14 +534,16 @@ def seed() -> None:
                 full_name="Новый Кандидат",
                 consent_152fz=True,
                 consent_152fz_at=consent_at,
+                privacy_public=False,
             )
         )
 
         db.commit()
         print("Seed OK")
-        print("  employer@demo.ru / demo1234")
-        print("  candidate@demo.ru / demo1234  (Backend Middle, FSP)")
-        print("  new@demo.ru / demo1234        (empty profile -> survey -> test)")
+        print(f"  employer@demo.ru / {demo_password}")
+        print(f"  candidate@demo.ru / {demo_password}  (Backend Middle, FSP)")
+        print(f"  new@demo.ru / {demo_password}        (empty profile -> survey -> test)")
+        print("  ВНИМАНИЕ: демо-пароли только для локального стенда (ALLOW_DEMO_SEED).")
     finally:
         db.close()
 

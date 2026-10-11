@@ -15,6 +15,8 @@ def ensure_columns() -> None:
         ("candidates", "resume_file_name", "VARCHAR(255)"),
         ("candidates", "resume_storage_key", "VARCHAR(500)"),
         ("candidates", "resume_content_type", "VARCHAR(120)"),
+        ("candidates", "avatar_storage_key", "VARCHAR(500)"),
+        ("candidates", "avatar_content_type", "VARCHAR(120)"),
         ("candidates", "birth_date", "TIMESTAMP"),
         ("candidates", "parental_consent", bool_default),
         ("candidates", "specializations_json", "TEXT"),
@@ -34,6 +36,8 @@ def ensure_columns() -> None:
         ("companies", "contact_email", "VARCHAR(255)"),
         ("companies", "contact_phone", "VARCHAR(50)"),
         ("companies", "contact_telegram", "VARCHAR(100)"),
+        ("companies", "avatar_storage_key", "VARCHAR(500)"),
+        ("companies", "avatar_content_type", "VARCHAR(120)"),
         # Существующие аккаунты считаем подтверждёнными; новые — email_verified=False в register
         (
             "users",
@@ -41,9 +45,15 @@ def ensure_columns() -> None:
             "BOOLEAN DEFAULT 1" if dialect == "sqlite" else "BOOLEAN DEFAULT TRUE",
         ),
         ("users", "email_confirm_token", "VARCHAR(64)"),
+        ("users", "email_confirm_expires_at", "TIMESTAMP"),
         ("employer_needs", "salary_gross", bool_default),
         ("employer_needs", "report_count", int_default),
         ("employer_needs", "is_suspicious", bool_default),
+        (
+            "employer_needs",
+            "is_active",
+            "BOOLEAN DEFAULT 1" if dialect == "sqlite" else "BOOLEAN DEFAULT TRUE",
+        ),
         ("test_attempts", "proctor_blur_count", int_default),
         ("test_attempts", "proctor_paste_count", int_default),
         ("test_attempts", "proctor_flagged", bool_default),

@@ -33,7 +33,15 @@ def test_invite_accept_revoke_contacts(client):
     cands = m.json()["candidates"]
     assert cands
     cand_id = cands[0]["id"]
-    assert "phone" not in cands[0]
+    assert cands[0].get("phone") is None
+    assert cands[0].get("contacts_revealed") is False
+    assert "•••" in (cands[0].get("phone_display") or "")
+
+    dossier = client.get(f"/api/employer/candidates/{cand_id}", headers=eh)
+    assert dossier.status_code == 200, dossier.text
+    body = dossier.json()
+    assert body.get("phone") is None
+    assert body.get("contacts_revealed") is False
 
     inv = client.post(
         "/api/employer/invitations",
