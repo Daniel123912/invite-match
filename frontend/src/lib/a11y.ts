@@ -22,8 +22,8 @@ export const DEFAULT_A11Y: A11ySettings = {
   contrast: "high",
   spacing: "normal",
   hideImages: false,
-  speech: true,
-  speechHover: true,
+  speech: false,
+  speechHover: false,
   speechRate: "normal",
 };
 
