@@ -1,0 +1,66 @@
+[
+  {
+    "id": "first_test",
+    "title": "Первый шаг",
+    "description": "Пройти и завершить первый тест",
+    "trigger": "first_test_completed",
+    "icon": "first_test.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "python_junior",
+    "title": "Python Junior",
+    "description": "Успешно пройти тест Python уровня Junior",
+    "trigger": "python_junior_passed",
+    "icon": "python_junior.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "python_middle",
+    "title": "Python Middle",
+    "description": "Успешно пройти тест Python уровня Middle",
+    "trigger": "python_middle_passed",
+    "icon": "python_middle.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "versatile",
+    "title": "Универсал",
+    "description": "Успешно пройти тесты по 3 разным направлениям",
+    "trigger": "three_tracks_passed",
+    "icon": "versatile.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "test_master",
+    "title": "Мастер тестов",
+    "description": "Успешно пройти 5 разных тестов",
+    "trigger": "five_distinct_tests_passed",
+    "icon": "test_master.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "week_streak",
+    "title": "7 дней в деле",
+    "description": "Заходить на платформу 7 дней подряд",
+    "trigger": "seven_day_login_streak",
+    "icon": "week_streak.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "night_owl",
+    "title": "Ночная сова",
+    "description": "Зайти на платформу между 00:00 и 05:00 по локальному времени",
+    "trigger": "login_between_00_and_05",
+    "icon": "night_owl.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  },
+  {
+    "id": "profile_ready",
+    "title": "Профиль готов",
+    "description": "Заполнить обязательные поля профиля кандидата",
+    "trigger": "candidate_profile_completed",
+    "icon": "profile_ready.svg",
+    "available_when": "Выполнено условие и реализована серверная проверка"
+  }
+]

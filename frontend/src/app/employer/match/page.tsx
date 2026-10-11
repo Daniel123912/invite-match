@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { ContactMasks } from "@/components/ContactMasks";
-import { api, formatApiError } from "@/lib/api";
+import { api, apiFetch, formatApiError } from "@/lib/api";
 import { GRADES, SPECIALIZATIONS } from "@/lib/labels";
 import { formatPhoneInput, phoneToE164 } from "@/lib/masks";
 
@@ -32,6 +32,15 @@ interface Candidate {
 interface MatchResponse {
   category: { title: string; candidates_count: number };
   candidates: Candidate[];
+}
+
+function initials(name?: string) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
 }
 
 export default function MatchPage() {
@@ -152,22 +161,44 @@ export default function MatchPage() {
     }
   }
 
+  async function downloadCandidateResume(candidateId: number, fullName: string) {
+    setError("");
+    setOk("");
+    try {
+      const res = await apiFetch(`/api/employer/candidates/${candidateId}/resume/file`);
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(cd);
+      const fromHeader = match?.[1] ? decodeURIComponent(match[1].replace(/"/g, "")) : "";
+      const safe = fullName.replace(/[^\w\-]+/g, "_").slice(0, 40) || "candidate";
+      const filename = fromHeader || `resume_${safe}_${candidateId}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setOk("Резюме скачано");
+    } catch (err) {
+      setError(formatApiError(err, "Не удалось скачать резюме"));
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="section-title text-xl">Подборка кандидатов</h2>
-        <p className="muted mt-1 text-sm">
-          Выберите категорию → увидите ранжированный список с обоснованием → пригласите с зарплатой
-        </p>
-      </div>
-
-      {needId && (
+    <div className="grid gap-4">
+      <section className="fsp-soft-block !py-4">
+        <h1 className="fsp-soft-block-title !mb-1">Поиск кандидатов</h1>
         <p className="muted text-sm">
-          Подборка по сохранённой потребности #{needId}
+          Выберите категорию → увидите ранжированный список → пригласите с зарплатой и заданием
         </p>
-      )}
+        {needId && (
+          <p className="muted mt-2 text-xs">Подборка по сохранённой вакансии #{needId}</p>
+        )}
+      </section>
 
-      <form onSubmit={search} className="panel grid gap-3 md:grid-cols-4">
+      <form onSubmit={search} className="fsp-soft-block grid gap-3 md:grid-cols-4">
         <div className="field">
           <label>Специализация</label>
           <select
@@ -215,49 +246,60 @@ export default function MatchPage() {
         </div>
       </form>
 
-      {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
-      {ok && <p className="text-sm font-semibold text-[var(--ok)]">{ok}</p>}
+      {error && (
+        <div className="fsp-soft-block !py-3">
+          <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>
+        </div>
+      )}
+      {ok && (
+        <div className="fsp-soft-block !py-3">
+          <p className="text-sm font-semibold text-[var(--ok)]">{ok}</p>
+        </div>
+      )}
 
       {loading && (
-        <div className="panel empty-state">
+        <div className="fsp-soft-block empty-state">
           <p className="muted">Ищем кандидатов…</p>
         </div>
       )}
 
       {!loading && searched && data && data.candidates.length === 0 && (
-        <div className="panel empty-state">
-          <p className="section-title text-lg">В категории пока нет кандидатов</p>
+        <div className="fsp-soft-block empty-state">
+          <p className="font-semibold">В категории пока нет кандидатов</p>
           <p className="muted max-w-md text-sm">
-            Попробуйте другой грейд/специализацию или создайте потребность — кандидаты появятся после
+            Попробуйте другой грейд/специализацию или создайте вакансию — кандидаты появятся после
             прохождения теста.
           </p>
           <Link href="/employer/needs" className="btn btn-ghost mt-2">
-            К потребности
+            К вакансиям
           </Link>
         </div>
       )}
 
       {!loading && searched && !data && !error && (
-        <div className="panel empty-state">
+        <div className="fsp-soft-block empty-state">
           <p className="muted text-sm">Нет данных — нажмите «Найти»</p>
         </div>
       )}
 
       {!loading && data && data.candidates.length > 0 && (
         <>
-          <div className="panel">
-            <h2 className="section-title text-xl">{data.category.title}</h2>
+          <section className="fsp-soft-block !py-4">
+            <h2 className="fsp-soft-block-title !mb-1">{data.category.title}</h2>
             <p className="muted text-sm">
               В категории: {data.category.candidates_count} · показано: {data.candidates.length}
             </p>
             <p className="muted mt-1 text-xs">
-              Ранг = тест×0.7 + ФСП×0.3. Неподтверждённый грейд ниже. Контакты скрыты до accept.
+              Ранг = тест×0.7 + ФСП×0.3. Контакты скрыты до accept.
             </p>
-          </div>
+          </section>
 
           {data.candidates.map((c) => (
-            <div key={c.id} className="panel">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <article key={c.id} className="fsp-soft-block">
+              <div className="flex flex-wrap items-start gap-4">
+                <div className="fsp-msg-avatar lg" aria-hidden>
+                  {initials(c.full_name)}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-bold">{c.full_name}</h3>
@@ -294,8 +336,17 @@ export default function MatchPage() {
                   <Link href={`/employer/candidates/${c.id}`} className="btn btn-ghost">
                     Изучить
                   </Link>
-                  <button className="btn btn-primary" onClick={() => setInviteFor(c.id)}>
-                    Пригласить
+                  {c.has_resume_file && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void downloadCandidateResume(c.id, c.full_name)}
+                    >
+                      Скачать резюме
+                    </button>
+                  )}
+                  <button type="button" className="fsp-invite-btn" onClick={() => setInviteFor(c.id)}>
+                    пригласить
                   </button>
                 </div>
               </div>
@@ -361,7 +412,7 @@ export default function MatchPage() {
                     </div>
                   </div>
                   <div className="field md:col-span-2">
-                    <label>Задание кандидату (опционально)</label>
+                    <label>Тестовое задание кандидату (опционально)</label>
                     <select
                       value={taskId}
                       onChange={(e) => setTaskId(e.target.value ? Number(e.target.value) : "")}
@@ -374,26 +425,26 @@ export default function MatchPage() {
                       ))}
                     </select>
                     <p className="muted text-xs">
-                      Появится у кандидата в разделе «Задания» сразу после отправки приглашения
+                      Появится у кандидата в «Заданиях». Ответ смотрите во вкладке «Проверка решений».
                     </p>
                   </div>
-                  <button className="btn btn-ok" onClick={() => sendInvite(c.id)}>
+                  <button type="button" className="btn btn-ok" onClick={() => sendInvite(c.id)}>
                     Отправить приглашение
                   </button>
                 </div>
               )}
-            </div>
+            </article>
           ))}
         </>
       )}
 
       {!loading && !searched && (
-        <div className="panel empty-state">
-          <p className="section-title text-lg">Выберите категорию и нажмите «Найти»</p>
+        <div className="fsp-soft-block empty-state">
+          <p className="font-semibold">Выберите категорию и нажмите «Найти»</p>
           <p className="muted text-sm">
             Или сначала{" "}
             <Link href="/employer/needs" className="link-quiet font-semibold text-[var(--brand)]">
-              опишите потребность
+              опишите вакансию
             </Link>
           </p>
         </div>

@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -18,6 +18,7 @@ from app.models import (
     GradeLevel,
     Invitation,
     InvitationStatus,
+    NeedReport,
     Specialization,
     TaskAssignment,
     TaskAssignmentStatus,
@@ -38,6 +39,7 @@ from app.schemas import (
     MatchResponse,
     NeedCreate,
     NeedOut,
+    NeedUpdate,
     TaskAssignmentOut,
 )
 from app.core.privacy import (
@@ -46,7 +48,7 @@ from app.core.privacy import (
     contact_masks,
     redact_pii,
 )
-from app.services import match_service, resume_service
+from app.services import avatar_service, match_service, resume_service
 
 router = APIRouter(prefix="/employer", tags=["employer"])
 logger = logging.getLogger("fsp.ats")
@@ -57,6 +59,32 @@ def _get_employer(user: User, db: Session) -> Employer:
     if not e:
         raise HTTPException(404, "Профиль работодателя не найден")
     return e
+
+
+def _company_out(company: Company) -> CompanyOut:
+    return CompanyOut(
+        id=company.id,
+        name=company.name,
+        description=company.description,
+        website=company.website,
+        industry=company.industry,
+        city=company.city,
+        contact_email=company.contact_email,
+        contact_phone=company.contact_phone,
+        contact_telegram=company.contact_telegram,
+        verified=bool(company.verified),
+        verification_note=company.verification_note,
+        has_avatar=bool(company.avatar_storage_key),
+    )
+
+
+def _require_company(e: Employer, db: Session) -> Company:
+    if not e.company_id:
+        raise HTTPException(400, "Сначала сохраните профиль компании")
+    company = db.query(Company).filter(Company.id == e.company_id).first()
+    if not company:
+        raise HTTPException(404, "Компания не найдена")
+    return company
 
 
 def _has_contact(*, email: str | None, phone: str | None, telegram: str | None) -> bool:
@@ -154,7 +182,8 @@ def get_company(
     e = _get_employer(user, db)
     if not e.company_id:
         return None
-    return db.query(Company).filter(Company.id == e.company_id).first()
+    company = db.query(Company).filter(Company.id == e.company_id).first()
+    return _company_out(company) if company else None
 
 
 @router.put("/company", response_model=CompanyOut)
@@ -181,7 +210,54 @@ def upsert_company(
         e.company_id = company.id
     db.commit()
     db.refresh(company)
-    return company
+    return _company_out(company)
+
+
+@router.post("/company/avatar", response_model=CompanyOut)
+def upload_company_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    company = _require_company(e, db)
+    avatar_service.delete_storage(company.avatar_storage_key)
+    key, ctype = avatar_service.save_avatar(file)
+    company.avatar_storage_key = key
+    company.avatar_content_type = ctype
+    db.commit()
+    db.refresh(company)
+    return _company_out(company)
+
+
+@router.delete("/company/avatar", response_model=CompanyOut)
+def delete_company_avatar(
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    company = _require_company(e, db)
+    avatar_service.delete_storage(company.avatar_storage_key)
+    company.avatar_storage_key = None
+    company.avatar_content_type = None
+    db.commit()
+    db.refresh(company)
+    return _company_out(company)
+
+
+@router.get("/company/avatar")
+def get_company_avatar(
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    company = _require_company(e, db)
+    if not company.avatar_storage_key:
+        raise HTTPException(404, "Логотип не загружен")
+    path = avatar_service.UPLOAD_DIR / company.avatar_storage_key
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден")
+    return FileResponse(path, media_type=company.avatar_content_type or "image/jpeg")
 
 
 @router.post("/needs", response_model=NeedOut, status_code=201)
@@ -208,8 +284,61 @@ def list_needs(
     db: Session = Depends(get_db),
 ):
     e = _get_employer(user, db)
-    needs = db.query(EmployerNeed).filter(EmployerNeed.employer_id == e.id).all()
+    needs = (
+        db.query(EmployerNeed)
+        .filter(EmployerNeed.employer_id == e.id)
+        .order_by(EmployerNeed.id.desc())
+        .all()
+    )
     return [_need_out(n, e) for n in needs]
+
+
+@router.patch("/needs/{need_id}", response_model=NeedOut)
+def update_need(
+    need_id: int,
+    body: NeedUpdate,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    need = (
+        db.query(EmployerNeed)
+        .filter(EmployerNeed.id == need_id, EmployerNeed.employer_id == e.id)
+        .first()
+    )
+    if not need:
+        raise HTTPException(404, "Вакансия не найдена")
+    if body.is_active is not None:
+        if body.is_active and need.is_suspicious:
+            raise HTTPException(400, "Нельзя включить вакансию, скрытую из-за жалоб")
+        need.is_active = body.is_active
+    db.commit()
+    db.refresh(need)
+    return _need_out(need, e)
+
+
+@router.delete("/needs/{need_id}", status_code=204)
+def delete_need(
+    need_id: int,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    e = _get_employer(user, db)
+    need = (
+        db.query(EmployerNeed)
+        .filter(EmployerNeed.id == need_id, EmployerNeed.employer_id == e.id)
+        .first()
+    )
+    if not need:
+        raise HTTPException(404, "Вакансия не найдена")
+    db.query(NeedReport).filter(NeedReport.need_id == need.id).delete(synchronize_session=False)
+    db.query(Invitation).filter(Invitation.need_id == need.id).update(
+        {Invitation.need_id: None},
+        synchronize_session=False,
+    )
+    db.delete(need)
+    db.commit()
+    return None
 
 
 @router.get("/match", response_model=MatchResponse)
@@ -234,6 +363,8 @@ def match(
             raise HTTPException(404, "Потребность не найдена")
         if linked_need.is_suspicious:
             raise HTTPException(400, "Потребность скрыта из-за жалоб — создайте новую")
+        if not linked_need.is_active:
+            raise HTTPException(400, "Вакансия отключена — включите её в «Мои вакансии»")
         specialization = linked_need.specialization
         grade = linked_need.grade
         if stack is None:
@@ -298,6 +429,35 @@ def get_candidate_dossier(
     return _public_candidate_out(c, reason=reason, grade_confirmed=bool(c.confirmed_grade), reveal=reveal)
 
 
+class _EmployerPdfCandidate:
+    """Обёртка: скрывает контакты/ПДн в PDF, пока приглашение не принято."""
+
+    __slots__ = ("_c", "_reveal")
+
+    def __init__(self, candidate: Candidate, *, reveal: bool):
+        self._c = candidate
+        self._reveal = reveal
+
+    def __getattr__(self, name: str):
+        return getattr(self._c, name)
+
+    @property
+    def phone(self):
+        return self._c.phone if self._reveal else None
+
+    @property
+    def telegram(self):
+        return self._c.telegram if self._reveal else None
+
+    @property
+    def about(self):
+        return self._c.about if self._reveal else redact_pii(self._c.about)
+
+    @property
+    def resume_text(self):
+        return self._c.resume_text if self._reveal else redact_pii(self._c.resume_text)
+
+
 @router.get("/candidates/{candidate_id}/resume/file")
 def employer_resume_file(
     candidate_id: int,
@@ -314,10 +474,12 @@ def employer_resume_file(
     path = resume_service.UPLOAD_DIR / c.resume_storage_key
     if not path.is_file():
         raise HTTPException(404, "Файл не найден")
+    filename = c.resume_file_name or path.name
     return FileResponse(
         path,
         media_type=c.resume_content_type or "application/octet-stream",
-        filename=c.resume_file_name or path.name,
+        filename=filename,
+        content_disposition_type="attachment",
     )
 
 
@@ -346,6 +508,29 @@ def employer_resume_preview(
     if not (inv and can_reveal_contacts(inv, c)):
         html = redact_pii(html) or html
     return HTMLResponse(html)
+
+
+@router.get("/candidates/{candidate_id}/profile/pdf")
+def employer_profile_pdf(
+    candidate_id: int,
+    user: User = Depends(require_role(UserRole.EMPLOYER)),
+    db: Session = Depends(get_db),
+):
+    """Скачать PDF-профиль кандидата (контакты маскируются до accept)."""
+    e = _get_employer(user, db)
+    c = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not c:
+        raise HTTPException(404, "Кандидат не найден")
+    inv = _employer_can_view_candidate(db, e, c)
+    reveal = bool(inv and can_reveal_contacts(inv, c))
+    pdf_bytes = resume_service.generate_profile_pdf(_EmployerPdfCandidate(c, reveal=reveal))
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in (c.full_name or "candidate"))
+    filename = f"resume_{safe_name[:40]}_{c.id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/categories", response_model=list[CategoryOut])
@@ -405,6 +590,8 @@ def create_invitation(
             raise HTTPException(404, "Потребность не найдена")
         if need.is_suspicious:
             raise HTTPException(400, "Потребность скрыта из-за жалоб — создайте новую")
+        if not need.is_active:
+            raise HTTPException(400, "Вакансия отключена — включите её перед приглашением")
 
     contact_email = (body.contact_email or company.contact_email or "").strip() or None
     contact_phone = (body.contact_phone or company.contact_phone or "").strip() or None
@@ -532,6 +719,7 @@ def _need_out(need: EmployerNeed, employer: Employer) -> NeedOut:
         salary_gross=need.salary_gross,
         report_count=need.report_count,
         is_suspicious=need.is_suspicious,
+        is_active=bool(need.is_active),
         company_verified=bool(company and company.verified),
         created_at=need.created_at,
     )
