@@ -35,11 +35,16 @@ def incoming(
                 message=inv.message,
                 salary_from=inv.salary_from,
                 salary_to=inv.salary_to,
+                salary_gross=bool(getattr(inv, "salary_gross", True)),
                 status=inv.status,
                 reason=inv.reason,
                 created_at=inv.created_at,
                 company_name=company_name,
                 candidate_name=c.full_name,
+                contacts_revoked=bool(inv.contacts_revoked),
+                employer_contact_email=inv.contact_email,
+                employer_contact_phone=inv.contact_phone,
+                employer_contact_telegram=inv.contact_telegram,
             )
         )
     return result
@@ -82,9 +87,14 @@ def update_status(
         message=inv.message,
         salary_from=inv.salary_from,
         salary_to=inv.salary_to,
+        salary_gross=bool(getattr(inv, "salary_gross", True)),
         status=inv.status,
         reason=inv.reason,
         created_at=inv.created_at,
         company_name=company_name,
         candidate_name=c.full_name,
+        contacts_revoked=bool(inv.contacts_revoked),
+        employer_contact_email=inv.contact_email,
+        employer_contact_phone=inv.contact_phone,
+        employer_contact_telegram=inv.contact_telegram,
     )

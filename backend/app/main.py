@@ -42,9 +42,15 @@ app = FastAPI(
 )
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# credentials + "*" недопустимы в браузере — явный список или localhost fallback
+if not origins:
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
+    allow_origins=origins,
     allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],

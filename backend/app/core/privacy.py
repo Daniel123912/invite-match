@@ -40,3 +40,11 @@ def can_reveal_contacts(invitation: Invitation, candidate: Candidate | None) -> 
     if not candidate or not candidate.consent_152fz:
         return False
     return True
+
+
+def assert_candidate_invitable(candidate: Candidate) -> None:
+    """Скрытых / без согласия нельзя приглашать даже по прямому ID."""
+    if not candidate.consent_152fz:
+        raise HTTPException(400, "Кандидат отозвал согласие на обработку ПДн")
+    if not candidate.privacy_public:
+        raise HTTPException(403, "Кандидат скрыл профиль — приглашение недоступно")

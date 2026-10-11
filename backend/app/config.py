@@ -12,12 +12,14 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
-    # SQLite by default so the team can start without Docker.
-    # For Postgres: postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db
-    database_url: str = "sqlite:///./fsp_talent_db.db"
+    # PostgreSQL — основная БД (локально: docker compose up -d db)
+    database_url: str = "postgresql+psycopg2://fsp:fsp@localhost:5432/fsp_talent_db"
 
     # Grade change cooldown (days)
     grade_change_cooldown_days: int = 90
+
+    # Сколько вопросов выдавать в одной попытке теста
+    test_question_count: int = 16
 
     # CORS (точный список через запятую)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

@@ -1,177 +1,77 @@
-"use client";
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useState, useTransition } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { api, setAuth, TokenResponse } from "@/lib/api";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const reduce = useReducedMotion();
-  const [email, setEmail] = useState("candidate@demo.ru");
-  const [password, setPassword] = useState("demo1234");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const data = await api<TokenResponse>("/api/auth/login", {
-        method: "POST",
-        form: true,
-        body: { username: email, password },
-      });
-      setAuth(data);
-      startTransition(() => {
-        router.push(data.role === "employer" ? "/employer" : "/candidate");
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка входа");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const busy = loading || pending;
-
   return (
-    <main className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0a0a12] px-6 py-12">
-      {/* Анимированный градиентный фон */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 -left-40 h-[28rem] w-[28rem] rounded-full bg-indigo-600/30 blur-[120px] animate-pulse-slow" />
-        <div className="absolute -bottom-40 -right-40 h-[28rem] w-[28rem] rounded-full bg-fuchsia-600/30 blur-[120px] animate-pulse-slow delay-1000" />
-        <div className="absolute top-1/2 left-1/2 h-[22rem] w-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500/20 blur-[100px] animate-pulse-slow delay-2000" />
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-[#F9F9F9] px-4 py-12">
+      {/* Карточка формы — ограничена по ширине и центрирована */}
+      <div className="w-full max-w-[450px] bg-[#F3F3F3] rounded-[40px] p-8 md:p-10 flex flex-col items-center shadow-sm">
 
-      {/* Сетка поверх фона */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.15]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-          maskImage: "radial-gradient(ellipse at center, black 40%, transparent 75%)",
-        }}
-      />
-
-      <motion.div
-        initial={reduce ? false : { opacity: 0, y: 24, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: reduce ? 0 : 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-md"
-      >
-        <Link
-          href="/"
-          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-white/70 transition-colors hover:text-white"
-        >
-          <span aria-hidden="true">←</span>
-          На главную
-        </Link>
-
-        <h1 className="font-display text-4xl font-bold tracking-tight text-white">
-          Вход
+        {/* Заголовок */}
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1A1A1A] mb-8 tracking-wide">
+          АВТОРИЗАЦИЯ
         </h1>
-        <p className="mt-2 text-sm text-white/50">
-          Войдите, чтобы продолжить
-        </p>
 
-        <motion.form
-          initial={reduce ? false : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: reduce ? 0 : 0.2, duration: 0.5 }}
-          onSubmit={onSubmit}
-          className="relative mt-8 flex flex-col gap-5 rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)]"
-        >
-          <div className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+        {/* Форма */}
+        <form className="w-full flex flex-col gap-4">
 
-          {/* Email */}
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="email"
-              className="text-xs font-medium uppercase tracking-wider text-white/40"
-            >
-              Email
-            </label>
+          {/* Поле Email */}
+          <div className="w-full">
             <input
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               type="email"
-              required
-              className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-white outline-none transition-all
-                         focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/10"
+              defaultValue="candidate@demo.ru"
+              placeholder="Email"
+              className="w-full bg-[#D9D9D9] text-[#1A1A1A] placeholder-[#6B7280] px-6 py-4 rounded-full text-base outline-none focus:ring-2 focus:ring-[#8B7CF6] transition-all"
             />
           </div>
 
-          {/* Пароль */}
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="password"
-              className="text-xs font-medium uppercase tracking-wider text-white/40"
-            >
-              Пароль
-            </label>
+          {/* Поле Пароль */}
+          <div className="w-full">
             <input
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               type="password"
-              required
-              className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-white outline-none transition-all
-                         focus:border-indigo-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-indigo-500/10"
+              defaultValue="demo1234"
+              placeholder="Пароль"
+              className="w-full bg-[#D9D9D9] text-[#1A1A1A] placeholder-[#6B7280] px-6 py-4 rounded-full text-base outline-none focus:ring-2 focus:ring-[#8B7CF6] transition-all"
             />
           </div>
 
-          {/* Ошибка */}
-          <AnimatePresence>
-            {error && (
-              <motion.p
-                initial={{ opacity: 0, height: 0, y: -4 }}
-                animate={{ opacity: 1, height: "auto", y: 0 }}
-                exit={{ opacity: 0, height: 0, y: -4 }}
-                className="overflow-hidden rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300"
-              >
-                {error}
-              </motion.p>
-            )}
-          </AnimatePresence>
+          {/* Чекбокс и ссылка "Забыли пароль" */}
+          <div className="flex items-center justify-between w-full px-1 mt-1">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded border-2 border-gray-500 text-[#8B7CF6] focus:ring-[#8B7CF6] cursor-pointer accent-[#8B7CF6]"
+              />
+              <span className="text-sm text-[#1A1A1A] font-medium group-hover:text-[#8B7CF6] transition-colors">
+                Запомнить меня
+              </span>
+            </label>
+            
+            <Link 
+              href="/forgot-password" 
+              className="text-sm text-[#1A1A1A] font-medium hover:text-[#8B7CF6] transition-colors"
+            >
+              Забыли пароль?
+            </Link>
+          </div>
 
-          {/* Кнопка */}
-          <motion.button
+          {/* Кнопка Войти */}
+          <button
             type="submit"
-            disabled={busy}
-            whileHover={!busy && !reduce ? { scale: 1.015 } : {}}
-            whileTap={!busy && !reduce ? { scale: 0.98 } : {}}
-            className="group relative mt-1 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 px-4 py-3 font-medium text-white shadow-lg shadow-indigo-500/25 transition-all hover:shadow-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full bg-[#8B7CF6] hover:bg-[#7A6BE5] text-white py-4 rounded-full text-base font-semibold tracking-wider transition-colors mt-2"
           >
-            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-            <span className="relative flex items-center justify-center gap-2">
-              {busy && (
-                <motion.span
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                  className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white"
-                />
-              )}
-              {busy ? "Входим…" : "Войти"}
-            </span>
-          </motion.button>
-        </motion.form>
+            ВОЙТИ
+          </button>
+        </form>
 
-        <p className="mt-6 text-center text-sm text-white/50">
+        {/* Ссылка "Нет аккаунта?" */}
+        <div className="mt-6 text-sm text-[#1A1A1A] font-medium">
           Нет аккаунта?{" "}
-          <Link
-            href="/register"
-            className="font-medium text-indigo-300 transition-colors hover:text-indigo-200 hover:underline"
-          >
-            Регистрация
+          <Link href="/register" className="text-[#8B7CF6] hover:underline">
+            Зарегистрироваться
           </Link>
-        </p>
-      </motion.div>
-    </main>
+        </div>
+
+      </div>
+    </div>
   );
 }

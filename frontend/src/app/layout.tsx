@@ -1,27 +1,28 @@
 import type { Metadata } from "next";
-import { Manrope, Sora } from "next/font/google";
+import { Onest, Unbounded } from "next/font/google";
 import "./globals.css";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const onest = Onest({
+  variable: "--font-onest",
   subsets: ["latin", "cyrillic"],
 });
 
-const sora = Sora({
-  variable: "--font-sora",
-  subsets: ["latin"],
+const unbounded = Unbounded({
+  variable: "--font-unbounded",
+  subsets: ["latin", "cyrillic"],
 });
 
-
 export const metadata: Metadata = {
-  title: "FSP Match — подбор ИТ-специалистов",
-  description: "Категоризация через тест + приглашения от работодателей",
+  title: "ФСП — платформа подтверждения навыков",
+  description: "Ваши достижения в спортивном программировании — теперь карьерное преимущество",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" className={`${manrope.variable} ${sora.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+    <html lang="ru" className={`${onest.variable} ${unbounded.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+      </body>
     </html>
   );
 }
