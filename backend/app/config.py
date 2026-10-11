@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Grade change cooldown (days)
     grade_change_cooldown_days: int = 90
 
+    # Сколько вопросов выдавать в одной попытке теста
+    test_question_count: int = 16
+
     # CORS (точный список через запятую)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     # Preview-деплои Vercel: https://*.vercel.app

@@ -152,11 +152,17 @@ class TestStartResponse(BaseModel):
     questions: list[QuestionOut]
     category_title: str
     integrity_hint: str = ""
+    resumed: bool = False
+    answers: dict[int, int] = {}  # уже сохранённые ответы при продолжении
 
 
 class TestSubmitRequest(BaseModel):
     attempt_id: int
     answers: dict[int, int]  # question_id -> option index
+
+
+class TestProgressRequest(BaseModel):
+    answers: dict[int, int]  # question_id -> option index (частичные ок)
 
 
 class ProctorEventRequest(BaseModel):
@@ -289,6 +295,7 @@ class InvitationCreate(BaseModel):
     message: str = Field(min_length=20, max_length=5000)
     salary_from: int = Field(gt=0)
     salary_to: int = Field(gt=0)
+    salary_gross: bool = True
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_telegram: Optional[str] = None
@@ -302,6 +309,7 @@ class InvitationOut(BaseModel):
     message: str
     salary_from: int
     salary_to: int
+    salary_gross: bool = True
     status: InvitationStatus
     reason: Optional[str] = None
     created_at: datetime

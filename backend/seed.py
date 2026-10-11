@@ -314,10 +314,8 @@ FRONTEND_JUNIOR = [
     },
 ]
 
+# Fallback только для Frontend (в SQL Айгуль нет Frontend)
 QUESTIONS_BY_CAT = {
-    (Specialization.BACKEND, GradeLevel.JUNIOR): BACKEND_JUNIOR,
-    (Specialization.BACKEND, GradeLevel.MIDDLE): BACKEND_MIDDLE,
-    (Specialization.BACKEND, GradeLevel.SENIOR): BACKEND_MIDDLE,  # reuse for demo
     (Specialization.FRONTEND, GradeLevel.JUNIOR): FRONTEND_JUNIOR,
     (Specialization.FRONTEND, GradeLevel.MIDDLE): FRONTEND_JUNIOR,
     (Specialization.FRONTEND, GradeLevel.SENIOR): FRONTEND_JUNIOR,
@@ -330,12 +328,30 @@ def seed() -> None:
     consent_at = datetime.now(timezone.utc)
     db = SessionLocal()
     try:
+        from app.services.aigul_bank import theory_questions_by_category, upsert_raw_tables
+        from app.services.question_expand import ensure_min_questions
+
         if db.query(Category).count() > 0:
-            print("Already seeded — skip")
+            # Досоздать недостающие спец. (напр. DevOps) и добить банк вопросов
+            filled = ensure_min_questions(db)
+            db.commit()
+            print(f"Already seeded — repaired categories/questions: {len(filled)} slots")
             return
 
-        # Categories
-        specs = [Specialization.BACKEND, Specialization.FRONTEND]
+        # Сырые таблицы: задания отдельно, ответы отдельно
+        n_tasks, n_ans = upsert_raw_tables(db)
+        print(f"Aigul bank: tasks={n_tasks}, answers={n_ans}")
+
+        aigul = theory_questions_by_category()
+        specs = [
+            Specialization.BACKEND,
+            Specialization.FRONTEND,
+            Specialization.FULLSTACK,
+            Specialization.DEVOPS,
+            Specialization.DATA,
+            Specialization.QA,
+            Specialization.MOBILE,
+        ]
         grades = [GradeLevel.JUNIOR, GradeLevel.MIDDLE, GradeLevel.SENIOR]
         categories: dict[tuple, Category] = {}
         for spec in specs:
@@ -351,7 +367,10 @@ def seed() -> None:
                 db.flush()
                 categories[(spec, grade)] = cat
 
-                for q in QUESTIONS_BY_CAT.get((spec, grade), BACKEND_JUNIOR):
+                questions = aigul.get((spec.value, grade.value))
+                if not questions:
+                    questions = QUESTIONS_BY_CAT.get((spec, grade), BACKEND_JUNIOR)
+                for q in questions:
                     db.add(
                         TestQuestion(
                             category_id=cat.id,
@@ -363,6 +382,10 @@ def seed() -> None:
                             difficulty=q["difficulty"],
                         )
                     )
+
+        # Добиваем каждую категорию до 20+ MCQ, чтобы в тесте было >15 вопросов
+        filled = ensure_min_questions(db)
+        print(f"Questions per category: {filled}")
 
         # FSP achievements stub
         for fsp_id, items in {

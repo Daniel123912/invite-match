@@ -21,6 +21,7 @@ from app.schemas import (
     QuestionOut,
     SurveyRequest,
     TestAttemptOut,
+    TestProgressRequest,
     TestResultOut,
     TestStartResponse,
     TestSubmitRequest,
@@ -128,23 +129,19 @@ def submit_survey(
     return candidate_to_out(c)
 
 
-@router.post("/test/start", response_model=TestStartResponse)
-def start_test(
-    user: User = Depends(require_role(UserRole.CANDIDATE)),
-    db: Session = Depends(get_db),
-):
-    c = _get_candidate(user, db)
-    require_consent(c)
-    attempt = test_service.start_test(db, c)
+def _attempt_to_start_response(
+    db: Session, attempt, *, resumed: bool = False
+) -> TestStartResponse:
     questions = test_service.get_attempt_questions(db, attempt)
     category = db.query(Category).filter(Category.id == attempt.category_id).first()
-
     token = secrets.token_hex(4).upper()
     return TestStartResponse(
         attempt_id=attempt.id,
         variant_group=attempt.variant_group,
         category_title=category.title if category else "",
         integrity_hint=f"FSP-{token}: не копируйте вопросы — прокторинг активен",
+        resumed=resumed,
+        answers=test_service.parse_saved_answers(attempt),
         questions=[
             QuestionOut(
                 id=q.id,
@@ -156,6 +153,57 @@ def start_test(
             for q in questions
         ],
     )
+
+
+@router.get("/test/current", response_model=TestStartResponse | None)
+def current_test(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """Незавершённая попытка (для продолжения после ухода со вкладки)."""
+    c = _get_candidate(user, db)
+    require_consent(c)
+    attempt = test_service.get_open_attempt(db, c.id)
+    if not attempt:
+        return None
+    if not c.specialization or not c.selected_grade:
+        return None
+    category = (
+        db.query(Category)
+        .filter(
+            Category.specialization == c.specialization,
+            Category.grade == c.selected_grade,
+        )
+        .first()
+    )
+    if not category or attempt.category_id != category.id:
+        return None
+    return _attempt_to_start_response(db, attempt, resumed=True)
+
+
+@router.post("/test/start", response_model=TestStartResponse)
+def start_test(
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    c = _get_candidate(user, db)
+    require_consent(c)
+    attempt, resumed = test_service.start_test(db, c)
+    return _attempt_to_start_response(db, attempt, resumed=resumed)
+
+
+@router.post("/test/{attempt_id}/progress", response_model=TestStartResponse)
+def save_test_progress(
+    attempt_id: int,
+    body: TestProgressRequest,
+    user: User = Depends(require_role(UserRole.CANDIDATE)),
+    db: Session = Depends(get_db),
+):
+    """Сохранить ответы без сдачи — чтобы можно было продолжить после смены вкладки."""
+    c = _get_candidate(user, db)
+    require_consent(c)
+    attempt = test_service.save_progress(db, c, attempt_id, body.answers)
+    return _attempt_to_start_response(db, attempt, resumed=True)
 
 
 @router.post("/test/submit", response_model=TestResultOut)
@@ -294,6 +342,7 @@ def revoke_contacts(
         message=inv.message,
         salary_from=inv.salary_from,
         salary_to=inv.salary_to,
+        salary_gross=bool(getattr(inv, "salary_gross", True)),
         status=inv.status,
         reason=inv.reason,
         created_at=inv.created_at,
