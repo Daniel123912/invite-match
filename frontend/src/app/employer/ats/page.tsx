@@ -66,48 +66,60 @@ export default function AtsPage() {
   }
 
   return (
-    <div className="panel grid max-w-2xl gap-4">
-      <div>
-        <h2 className="section-title text-xl">Интеграция ATS (заглушка)</h2>
-        <p className="muted text-sm">
-          Демо-экспорт кандидата в JSON и приём webhook для внешней ATS. Не обязательный MVP.
-        </p>
-      </div>
-      <div className="field">
-        <label>Приглашение</label>
-        {invitations.length ? (
-          <select
-            value={invitationId}
-            onChange={(e) => setInvitationId(Number(e.target.value))}
+    <div className="grid gap-4">
+      <section className="fsp-soft-block max-w-2xl space-y-4">
+        <div>
+          <h1 className="fsp-soft-block-title">Настройки · ATS</h1>
+          <p className="muted -mt-2 text-sm">
+            Демо-экспорт кандидата в JSON и тест webhook для внешней ATS. Не обязательный MVP.
+          </p>
+        </div>
+        <div className="field">
+          <label>Приглашение</label>
+          {invitations.length ? (
+            <select
+              value={invitationId}
+              onChange={(e) => setInvitationId(Number(e.target.value))}
+            >
+              {invitations.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  #{inv.id} · {inv.candidate_name || "кандидат"} · {labelInviteStatus(inv.status)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="number"
+              value={invitationId}
+              onChange={(e) => setInvitationId(e.target.value ? Number(e.target.value) : "")}
+              placeholder="ID приглашения"
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy || !invitationId}
+            onClick={exportAts}
           >
-            {invitations.map((inv) => (
-              <option key={inv.id} value={inv.id}>
-                #{inv.id} · {inv.candidate_name || "кандидат"} · {labelInviteStatus(inv.status)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type="number"
-            value={invitationId}
-            onChange={(e) => setInvitationId(e.target.value ? Number(e.target.value) : "")}
-            placeholder="ID приглашения"
-          />
+            Экспорт
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy || !invitationId}
+            onClick={sendWebhook}
+          >
+            Тест webhook
+          </button>
+        </div>
+        {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
+        {webhookMsg && <p className="text-sm font-semibold text-[var(--ok)]">{webhookMsg}</p>}
+        {exportJson && (
+          <pre className="overflow-auto rounded-2xl bg-white/70 p-3 text-xs">{exportJson}</pre>
         )}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn btn-primary" disabled={busy || !invitationId} onClick={exportAts}>
-          Экспорт
-        </button>
-        <button type="button" className="btn btn-ghost" disabled={busy || !invitationId} onClick={sendWebhook}>
-          Тест webhook
-        </button>
-      </div>
-      {error && <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>}
-      {webhookMsg && <p className="text-sm font-semibold text-[var(--ok)]">{webhookMsg}</p>}
-      {exportJson && (
-        <pre className="overflow-auto rounded-xl bg-[var(--bg)] p-3 text-xs">{exportJson}</pre>
-      )}
+      </section>
     </div>
   );
 }

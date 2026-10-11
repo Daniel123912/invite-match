@@ -60,11 +60,15 @@ Swagger: `http://localhost:8001/docs` (локально)
 | Метод | Путь | Назначение |
 |-------|------|------------|
 | GET/PUT | `/employer/company` | профиль компании |
-| POST/GET | `/employer/needs` | потребность (зарплата от–до + gross) |
+| POST/GET/DELETE | `/employer/company/avatar` | логотип/аватар компании |
+| POST/GET | `/employer/needs` | вакансия (зарплата от–до + gross) |
+| PATCH | `/employer/needs/{id}` | вкл/выкл вакансии (`is_active`) |
+| DELETE | `/employer/needs/{id}` | удалить вакансию |
 | GET | `/employer/match` | подборка + `reason` + маски контактов |
 | GET | `/employer/candidates/{id}` | карточка кандидата (резюме/стек/тест; контакты в масках до accept) |
-| GET | `/employer/candidates/{id}/resume/file` | файл резюме (PDF/DOCX) |
+| GET | `/employer/candidates/{id}/resume/file` | скачать файл резюме (PDF/DOCX) |
 | GET | `/employer/candidates/{id}/resume/preview` | HTML-превью DOCX |
+| GET | `/employer/candidates/{id}/profile/pdf` | PDF-профиль InviteMatch (контакты маскируются до accept) |
 | POST/GET | `/employer/invitations` | исходящие приглашения |
 
 Контакты в ответах: `phone`/`email`/`telegram` пустые до accept; UI-маски в `phone_display` / `email_display` / `telegram_display`. В тексте резюме/about ПДн тоже маскируются, пока контакты не раскрыты.

@@ -32,39 +32,31 @@ export default function EmployerHome() {
 
   return (
     <div className="grid gap-4">
-      <section className="panel overflow-hidden !p-0">
-        <div className="relative px-5 py-6 md:px-7 md:py-7">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-90"
-            style={{
-              background:
-                "linear-gradient(120deg, color-mix(in srgb, var(--brand) 14%, white) 0%, transparent 55%), linear-gradient(220deg, color-mix(in srgb, var(--accent) 10%, white) 0%, transparent 45%)",
-            }}
-          />
-          <div className="relative">
-            <p className="badge w-fit">Обратная механика</p>
-            <h2 className="cabinet-title mt-3 text-2xl md:text-3xl">Найдите категорию</h2>
-            <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">
-              Опишите потребность → увидите категорию и кандидатов с обоснованием → отправьте
-              приглашение с зарплатой. Контакты откроются только после принятия.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/employer/company" className="btn btn-ghost">
-                1. Компания
-              </Link>
-              <Link href="/employer/needs" className="btn btn-primary">
-                2. Описать потребность
-              </Link>
-              <Link href="/employer/match" className="btn btn-ghost">
-                3. Подборка
-              </Link>
-            </div>
-          </div>
+      <section className="fsp-soft-block">
+        <p className="badge w-fit">Обратная механика</p>
+        <h1 className="fsp-profile-name mt-3">Найдите категорию</h1>
+        <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">
+          Опишите потребность → увидите категорию и кандидатов с обоснованием → отправьте
+          приглашение с зарплатой. Контакты откроются только после принятия.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Link href="/employer/company" className="btn btn-ghost">
+            1. Профиль
+          </Link>
+          <Link href="/employer/needs" className="btn btn-primary">
+            2. Вакансия
+          </Link>
+          <Link href="/employer/match" className="btn btn-ghost">
+            3. Поиск
+          </Link>
+          <Link href="/employer/tasks" className="btn btn-ghost">
+            4. Проверка решений
+          </Link>
         </div>
       </section>
 
       {error && (
-        <div className="panel !py-3">
+        <div className="fsp-soft-block !py-3">
           <p className="text-sm font-semibold text-[var(--danger)]">{error}</p>
           <button className="btn btn-ghost mt-2" onClick={() => window.location.reload()}>
             Повторить
@@ -72,9 +64,9 @@ export default function EmployerHome() {
         </div>
       )}
 
-      <section>
+      <section className="fsp-soft-block">
         <div className="mb-3 flex items-end justify-between gap-3">
-          <h3 className="section-title">Категории с кандидатами</h3>
+          <h2 className="fsp-soft-block-title !mb-0">Категории с кандидатами</h2>
           <p className="muted text-xs">
             {cats === null ? "Загрузка…" : `${cats.length} доступно`}
           </p>
@@ -88,7 +80,7 @@ export default function EmployerHome() {
                   ? `/employer/match?specialization=${c.specialization}&grade=${c.grade}`
                   : "/employer/match"
               }
-              className="panel block transition hover:border-[var(--brand)]"
+              className="fsp-stat block transition hover:border-[var(--brand)]"
             >
               <p className="font-semibold tracking-tight">{c.title}</p>
               <p className="muted mt-1.5 text-sm">{c.candidates_count} в категории</p>
@@ -98,7 +90,7 @@ export default function EmployerHome() {
             </Link>
           ))}
           {cats !== null && !cats.length && (
-            <div className="panel empty-state sm:col-span-2 lg:col-span-3">
+            <div className="fsp-stat empty-state sm:col-span-2 lg:col-span-3">
               <p className="muted text-sm">Категории появятся после заполнения базы (seed)</p>
             </div>
           )}

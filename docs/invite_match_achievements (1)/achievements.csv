@@ -1,0 +1,9 @@
+﻿id,Название,Как получить,Событие/условие для backend,SVG
+first_test,Первый шаг,Пройти и завершить первый тест,first_test_completed,first_test.svg
+python_junior,Python Junior,Успешно пройти тест Python уровня Junior,python_junior_passed,python_junior.svg
+python_middle,Python Middle,Успешно пройти тест Python уровня Middle,python_middle_passed,python_middle.svg
+versatile,Универсал,Успешно пройти тесты по 3 разным направлениям,three_tracks_passed,versatile.svg
+test_master,Мастер тестов,Успешно пройти 5 разных тестов,five_distinct_tests_passed,test_master.svg
+week_streak,7 дней в деле,Заходить на платформу 7 дней подряд,seven_day_login_streak,week_streak.svg
+night_owl,Ночная сова,Зайти на платформу между 00:00 и 05:00 по локальному времени,login_between_00_and_05,night_owl.svg
+profile_ready,Профиль готов,Заполнить обязательные поля профиля кандидата,candidate_profile_completed,profile_ready.svg

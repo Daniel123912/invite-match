@@ -106,6 +106,8 @@ class Candidate(Base):
     resume_file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     resume_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     resume_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    avatar_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    avatar_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     stack: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # comma-separated
     birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     parental_consent: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -166,6 +168,8 @@ class Company(Base):
     contact_telegram: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verification_note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    avatar_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    avatar_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     employers: Mapped[list["Employer"]] = relationship(back_populates="company")
 
@@ -239,6 +243,7 @@ class EmployerNeed(Base):
     salary_gross: Mapped[bool] = mapped_column(Boolean, default=True)
     report_count: Mapped[int] = mapped_column(Integer, default=0)
     is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     employer: Mapped["Employer"] = relationship(back_populates="needs")

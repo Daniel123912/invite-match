@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState, useTransition } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { api, formatApiError, setAuth, TokenResponse, API_URL } from "@/lib/api";
 
 type FieldErrors = {
@@ -140,9 +141,7 @@ export default function RegisterPage() {
   return (
     <main className="auth-shell">
       <div className="auth-card">
-        <Link href="/" className="cabinet-brand">
-          FSP Match
-        </Link>
+        <BrandLogo size="auth" />
         <h1 className="cabinet-title mt-4">Регистрация</h1>
         <p className="muted mt-2 text-sm">Создайте аккаунт кандидата или работодателя.</p>
         {awaitingConfirm && (

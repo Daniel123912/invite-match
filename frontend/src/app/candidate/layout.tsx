@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { NotificationBell } from "@/components/NotificationBell";
 import { recordCandidateVisit } from "@/lib/achievements";
 import { clearAuth, getRole } from "@/lib/api";
@@ -67,22 +68,6 @@ function NavLinks({
   );
 }
 
-function FspLogo() {
-  return (
-    <svg className="fsp-logo-mark" viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="10" r="4.2" fill="#e11d48" />
-      <circle cx="10" cy="28" r="4.2" fill="#2563eb" />
-      <circle cx="30" cy="28" r="4.2" fill="#7c3aed" />
-      <path
-        d="M20 14.2 11.8 25.2M20 14.2 28.2 25.2M14.2 28h11.6"
-        stroke="#94a3b8"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export default function CandidateLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -114,10 +99,7 @@ export default function CandidateLayout({ children }: { children: ReactNode }) {
   return (
     <div className="fsp-cabinet page-enter flex w-full flex-1 flex-col">
       <header className="fsp-topbar">
-        <Link href="/" className="fsp-logo" aria-label="ФСП Match — на главную">
-          <FspLogo />
-          <span className="fsp-logo-text">ФСП</span>
-        </Link>
+        <BrandLogo />
 
         <label className="fsp-topbar-search fsp-search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
