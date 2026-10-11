@@ -147,7 +147,10 @@ export default function RegisterPage() {
         <p className="muted mt-2 text-sm">Создайте аккаунт кандидата или работодателя.</p>
         {awaitingConfirm && (
           <form onSubmit={onConfirmManual} className="panel panel-solid mt-7 flex flex-col gap-4">
-            <p className="text-sm">Подтвердите email токеном (в демо он приходит в ответе регистрации).</p>
+            <p className="text-sm">
+              Подтвердите email токеном из письма. В локальном режиме без SMTP токен может быть в
+              ответе регистрации — вставьте его ниже.
+            </p>
             <div className="field">
               <label>Токен подтверждения</label>
               <input value={confirmToken} onChange={(e) => setConfirmToken(e.target.value)} />
@@ -244,8 +247,9 @@ export default function RegisterPage() {
               className="mt-1"
             />
             <span>
-              Даю согласие на обработку персональных данных в соответствии с 152-ФЗ. Контакты
-              кандидата открываются работодателю только после принятия приглашения.
+              Даю согласие на обработку персональных данных в соответствии с 152-ФЗ. Профиль
+              кандидата по умолчанию скрыт из подборки; контакты открываются работодателю только
+              после принятия приглашения.
             </span>
           </label>
           {fieldErrors.consent && (

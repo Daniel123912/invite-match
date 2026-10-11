@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, apiFetch, formatApiError } from "@/lib/api";
+import { formatPhoneInput, phoneToE164 } from "@/lib/masks";
 
 interface Profile {
   full_name: string;
@@ -45,7 +46,12 @@ export default function ProfilePage() {
 
   useEffect(() => {
     api<Profile>("/api/candidate/profile")
-      .then(setForm)
+      .then((p) =>
+        setForm({
+          ...p,
+          phone: p.phone ? formatPhoneInput(p.phone) : p.phone,
+        }),
+      )
       .catch((e) => setLoadError(e.message));
   }, []);
 
@@ -60,9 +66,13 @@ export default function ProfilePage() {
     setError("");
     setSaving(true);
     try {
+      const payload = {
+        ...next,
+        phone: next.phone ? phoneToE164(next.phone) : next.phone,
+      };
       const updated = await api<Profile>("/api/candidate/profile", {
         method: "PATCH",
-        body: next,
+        body: payload,
       });
       setForm(updated);
       setMsg("Сохранено");
@@ -237,11 +247,21 @@ export default function ProfilePage() {
           </div>
           <div className="field">
             <label>Телефон</label>
-            <input value={form.phone || ""} onChange={(e) => set("phone", e.target.value)} />
+            <input
+              value={form.phone || ""}
+              onChange={(e) => set("phone", formatPhoneInput(e.target.value))}
+              placeholder="+7 (___) ___-__-__"
+              inputMode="tel"
+            />
+            <p className="muted mt-1 text-xs">Для работодателей — под маской до принятия оффера</p>
           </div>
           <div className="field">
             <label>Telegram</label>
-            <input value={form.telegram || ""} onChange={(e) => set("telegram", e.target.value)} />
+            <input
+              value={form.telegram || ""}
+              onChange={(e) => set("telegram", e.target.value)}
+              placeholder="@username"
+            />
           </div>
           <div className="field md:col-span-2">
             <label>Стек (через запятую)</label>

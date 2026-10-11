@@ -69,7 +69,7 @@ def get_open_attempt(db: Session, candidate_id: int) -> TestAttempt | None:
 def _pick_antileak_variant(
     questions: list[TestQuestion], pick: int
 ) -> tuple[list[TestQuestion], str]:
-    """Выдать набор из одной группы A/B (антислив). Fallback — mixed, если банк беден."""
+    """Выдать набор строго из одной группы A/B (антислив, без mixed)."""
     by_group: dict[str, list[TestQuestion]] = {}
     for q in questions:
         group = (q.variant_group or "A").strip() or "A"
@@ -78,28 +78,15 @@ def _pick_antileak_variant(
         by_group.setdefault(group, []).append(q)
 
     eligible = [g for g, qs in by_group.items() if len(qs) >= pick]
-    if eligible:
-        variant = random.choice(eligible)
-        return random.sample(by_group[variant], pick), variant
-
-    if by_group:
-        variant = max(by_group.keys(), key=lambda g: len(by_group[g]))
-        primary = list(by_group[variant])
-        selected = random.sample(primary, min(pick, len(primary)))
-        if len(selected) < pick:
-            rest = [q for q in questions if q not in selected]
-            need = pick - len(selected)
-            if len(rest) < need:
-                raise HTTPException(
-                    400,
-                    f"В категории недостаточно вопросов для теста ({len(questions)}/{pick}). "
-                    "Запустите seed/import_aigul_bank или ensure_min_questions.",
-                )
-            selected.extend(random.sample(rest, need))
-            return selected, "mixed"
-        return selected, variant
-
-    raise HTTPException(404, "Нет заданий для этой категории")
+    if not eligible:
+        sizes = ", ".join(f"{g}:{len(qs)}" for g, qs in sorted(by_group.items())) or "пусто"
+        raise HTTPException(
+            400,
+            f"Антислив: нужно ≥{pick} вопросов в одной группе A или B (сейчас: {sizes}). "
+            "Запустите seed/import_aigul_bank или ensure_min_questions.",
+        )
+    variant = random.choice(eligible)
+    return random.sample(by_group[variant], pick), variant
 
 
 def parse_saved_answers(attempt: TestAttempt) -> dict[int, int]:
@@ -238,13 +225,16 @@ def submit_test(
 
     attempt.answers_json = json.dumps({str(k): v for k, v in answers.items()})
     attempt.score = round(score * 100, 1)
-    attempt.passed = passed
     attempt.finished_at = datetime.now(timezone.utc)
     attempt.plagiarism_score = plagiarism_similarity(db, attempt, answers)
-    if attempt.plagiarism_score >= 0.85:
+    if attempt.plagiarism_score is not None and attempt.plagiarism_score >= 0.85:
         attempt.proctor_flagged = True
     if attempt.proctor_blur_count >= 5 or attempt.proctor_paste_count >= 2:
         attempt.proctor_flagged = True
+    # Прокторинг / антиплагиат: флаг снимает зачёт категории (балл сохраняется)
+    if attempt.proctor_flagged:
+        passed = False
+    attempt.passed = passed
 
     candidate.test_score = attempt.score
     if passed:

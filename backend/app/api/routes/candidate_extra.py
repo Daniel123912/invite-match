@@ -3,12 +3,13 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.candidate_serializers import candidate_to_out
 from app.core.privacy import require_consent
+from app.core.rate_limit import client_ip, limiter
 from app.core.security import require_role
 from app.database import get_db
 from app.models import (
@@ -133,11 +134,13 @@ def download_profile_pdf(
 @router.post("/sandbox/run", response_model=SandboxRunResponse)
 def sandbox_run(
     body: SandboxRunRequest,
+    request: Request,
     user: User = Depends(require_role(UserRole.CANDIDATE)),
     db: Session = Depends(get_db),
 ):
     _get_candidate(user, db)
-    result = sandbox_service.run_python(body.code, body.stdin)
+    limiter.check(f"sandbox:{user.id}:{client_ip(request)}", limit=15, window_sec=60)
+    result = sandbox_service.run(body.code, body.stdin, body.language)
     return SandboxRunResponse(**result)
 
 
@@ -219,10 +222,12 @@ def my_tasks(
 def submit_task(
     assignment_id: int,
     body: TaskSubmitRequest,
+    request: Request,
     user: User = Depends(require_role(UserRole.CANDIDATE)),
     db: Session = Depends(get_db),
 ):
     c = _get_candidate(user, db)
+    limiter.check(f"task-submit:{user.id}:{client_ip(request)}", limit=20, window_sec=60)
     a = (
         db.query(TaskAssignment)
         .filter(TaskAssignment.id == assignment_id, TaskAssignment.candidate_id == c.id)

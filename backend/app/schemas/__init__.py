@@ -1,7 +1,8 @@
+import re
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import (
     EmployerTaskType,
@@ -18,13 +19,22 @@ from app.models import (
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8, max_length=128)
     role: UserRole
     full_name: str = ""
     # Обязательное согласие на обработку ПДн (152-ФЗ)
     consent_152fz: bool = False
     birth_date: Optional[date] = None
     parental_consent: bool = False
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not re.search(r"[A-Za-zА-Яа-я]", v):
+            raise ValueError("Пароль должен содержать хотя бы одну букву")
+        if not re.search(r"\d", v):
+            raise ValueError("Пароль должен содержать хотя бы одну цифру")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -117,7 +127,7 @@ class CandidateOut(BaseModel):
 
 
 class CandidatePublicOut(BaseModel):
-    """Contacts hidden until invitation accepted."""
+    """Профиль для работодателя: контакты в масках до accept."""
 
     id: int
     full_name: str
@@ -134,6 +144,17 @@ class CandidatePublicOut(BaseModel):
     has_fsp_history: bool = False
     rank_score: Optional[float] = None
     reason: Optional[str] = None
+    has_resume_file: bool = False
+    resume_file_name: Optional[str] = None
+    resume_content_type: Optional[str] = None
+    resume_text: Optional[str] = None
+    contacts_revealed: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    telegram: Optional[str] = None
+    phone_display: str = "+7 ••• •••-••-••"
+    email_display: str = "•••@•••.••"
+    telegram_display: str = "@••••••"
 
 
 # ── Test ──────────────────────────────────────────────
@@ -315,11 +336,15 @@ class InvitationOut(BaseModel):
     created_at: datetime
     company_name: Optional[str] = None
     candidate_name: Optional[str] = None
-    # Contacts only if accepted
+    # Contacts only if accepted; иначе маски в *_display
     candidate_phone: Optional[str] = None
     candidate_telegram: Optional[str] = None
     candidate_email: Optional[str] = None
+    contacts_revealed: bool = False
     contacts_revoked: bool = False
+    phone_display: str = "+7 ••• •••-••-••"
+    email_display: str = "•••@•••.••"
+    telegram_display: str = "@••••••"
     # Способ связи с работодателем (виден кандидату)
     employer_contact_email: Optional[str] = None
     employer_contact_phone: Optional[str] = None
@@ -357,6 +382,7 @@ class MatchResponse(BaseModel):
 class SandboxRunRequest(BaseModel):
     code: str
     stdin: str = ""
+    language: str = "python"  # python | javascript | sql
 
 
 class SandboxRunResponse(BaseModel):

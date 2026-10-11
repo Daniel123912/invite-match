@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { INDUSTRIES } from "@/lib/labels";
+import { formatPhoneInput, phoneToE164 } from "@/lib/masks";
 
 interface Company {
   id?: number;
@@ -37,7 +38,12 @@ export default function CompanyPage() {
   useEffect(() => {
     api<Company | null>("/api/employer/company")
       .then((c) => {
-        if (c) setForm(c);
+        if (c) {
+          setForm({
+            ...c,
+            contact_phone: c.contact_phone ? formatPhoneInput(c.contact_phone) : c.contact_phone,
+          });
+        }
       })
       .catch((e) => setError(formatApiError(e, "Не удалось загрузить компанию")))
       .finally(() => setLoading(false));
@@ -50,9 +56,19 @@ export default function CompanyPage() {
     try {
       const saved = await api<Company>("/api/employer/company", {
         method: "PUT",
-        body: form,
+        body: {
+          ...form,
+          contact_phone: form.contact_phone
+            ? phoneToE164(form.contact_phone) || form.contact_phone
+            : form.contact_phone,
+        },
       });
-      setForm(saved);
+      setForm({
+        ...saved,
+        contact_phone: saved.contact_phone
+          ? formatPhoneInput(saved.contact_phone)
+          : saved.contact_phone,
+      });
       setMsg("Сохранено");
     } catch (err) {
       setError(formatApiError(err));
@@ -143,8 +159,9 @@ export default function CompanyPage() {
         <label>Контактный телефон</label>
         <input
           value={form.contact_phone || ""}
-          onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
-          placeholder="+7…"
+          onChange={(e) => setForm({ ...form, contact_phone: formatPhoneInput(e.target.value) })}
+          placeholder="+7 (___) ___-__-__"
+          inputMode="tel"
         />
       </div>
       <div className="field">

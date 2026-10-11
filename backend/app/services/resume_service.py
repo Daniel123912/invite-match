@@ -7,26 +7,38 @@ from fastapi import HTTPException, UploadFile
 
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "resumes"
 MAX_BYTES = 5 * 1024 * 1024
-ALLOWED = {
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
+PDF_MIME = "application/pdf"
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ALLOWED = {PDF_MIME, DOCX_MIME}
+
+
+def _guess_content_type(filename: str | None, declared: str | None, raw: bytes) -> str | None:
+    name = (filename or "").lower()
+    declared = (declared or "").split(";")[0].strip().lower()
+    if declared in ALLOWED:
+        return declared
+    if name.endswith(".pdf") or raw[:4] == b"%PDF":
+        return PDF_MIME
+    if name.endswith(".docx") or (len(raw) >= 2 and raw[:2] == b"PK"):
+        if name.endswith(".docx") or declared in ("application/octet-stream", "application/zip", ""):
+            return DOCX_MIME
+    return None
 
 
 def save_resume(file: UploadFile) -> tuple[str, str, str, str]:
-    if file.content_type not in ALLOWED:
-        raise HTTPException(400, "Допустимы только PDF и DOCX")
     raw = file.file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(400, "Файл больше 5 МБ")
-    ext = ".pdf" if file.content_type == "application/pdf" else ".docx"
+    ctype = _guess_content_type(file.filename, file.content_type, raw)
+    if ctype not in ALLOWED:
+        raise HTTPException(400, "Допустимы только PDF и DOCX")
+    ext = ".pdf" if ctype == PDF_MIME else ".docx"
     key = f"{uuid.uuid4().hex}{ext}"
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     path = UPLOAD_DIR / key
     path.write_bytes(raw)
-    text = extract_text(raw, file.content_type)
-    return key, file.filename or key, file.content_type, text
-
+    text = extract_text(raw, ctype)
+    return key, file.filename or key, ctype, text
 
 def extract_text(raw: bytes, content_type: str) -> str:
     if content_type == "application/pdf":

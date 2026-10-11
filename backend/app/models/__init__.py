@@ -81,7 +81,11 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.CANDIDATE)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # SHA-256 hex от токена подтверждения (сам токен в БД не храним)
     email_confirm_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    email_confirm_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     candidate: Mapped[Optional["Candidate"]] = relationship(back_populates="user", uselist=False)
@@ -118,7 +122,7 @@ class Candidate(Base):
     fsp_score: Mapped[float] = mapped_column(Float, default=0.0)
     has_fsp_history: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    privacy_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    privacy_public: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_152fz: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_152fz_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_grade_change_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

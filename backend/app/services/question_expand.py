@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, GradeLevel, Specialization, TestQuestion
 
-MIN_PER_CATEGORY = 20
+# Минимум на категорию: по TEST_PICK_COUNT на группы A и B (антислив без mixed)
 TEST_PICK_COUNT = 16
+MIN_PER_VARIANT = TEST_PICK_COUNT
+MIN_PER_CATEGORY = MIN_PER_VARIANT * 2
 
 # Базовые шаблоны по специализации: (topic, text, options, correct_index)
 _BANK: dict[str, list[tuple[str, str, list[str], int]]] = {
@@ -189,24 +191,28 @@ def _grade_offset(grade: GradeLevel) -> int:
     return {GradeLevel.JUNIOR: 0, GradeLevel.MIDDLE: 3, GradeLevel.SENIOR: 6}[grade]
 
 
-def build_extra_questions(spec: Specialization, grade: GradeLevel, need: int) -> list[dict]:
-    """Сгенерировать need уникальных MCQ для категории."""
+def build_extra_questions(
+    spec: Specialization,
+    grade: GradeLevel,
+    need: int,
+    *,
+    variant_group: str | None = None,
+) -> list[dict]:
+    """Сгенерировать need уникальных MCQ для категории (опционально в одну группу A/B)."""
     base = list(_BANK.get(spec.value, _BANK["backend"]))
-    # Ротация старта по грейду, чтобы наборы отличались
     start = _grade_offset(grade) % len(base)
     rotated = base[start:] + base[:start]
-    # Дублируем цикл с суффиксами, если шаблонов мало
     out: list[dict] = []
     for i, (topic, text, options, correct) in enumerate(cycle(rotated)):
         if len(out) >= need:
             break
-        # Лёгкая вариация текста, чтобы не было полного дубля id-смысла
         suffix = f" (вариант {i // len(rotated) + 1})" if i >= len(rotated) else ""
+        group = variant_group or ("A" if i % 2 == 0 else "B")
         out.append(
             {
-                "variant_group": "A" if i % 2 == 0 else "B",
+                "variant_group": group,
                 "topic": topic,
-                "text": text + suffix,
+                "text": text + suffix + (f" [{group}]" if variant_group else ""),
                 "options": options,
                 "correct_index": correct,
                 "difficulty": {GradeLevel.JUNIOR: 1, GradeLevel.MIDDLE: 2, GradeLevel.SENIOR: 3}[grade],
@@ -215,8 +221,12 @@ def build_extra_questions(spec: Specialization, grade: GradeLevel, need: int) ->
     return out
 
 
-def ensure_min_questions(db: Session, min_count: int = MIN_PER_CATEGORY) -> dict[str, int]:
-    """Дополнить каждую категорию до min_count вопросов. Создаёт отсутствующие категории."""
+def ensure_min_questions(
+    db: Session,
+    min_count: int = MIN_PER_CATEGORY,
+    min_per_variant: int = MIN_PER_VARIANT,
+) -> dict[str, int]:
+    """Дополнить каждую категорию: всего ≥min_count и в каждой группе A/B ≥min_per_variant."""
     specs = [
         Specialization.BACKEND,
         Specialization.FRONTEND,
@@ -246,24 +256,49 @@ def ensure_min_questions(db: Session, min_count: int = MIN_PER_CATEGORY) -> dict
                 db.add(cat)
                 db.flush()
 
-            current = db.query(TestQuestion).filter(TestQuestion.category_id == cat.id).count()
-            need = max(0, min_count - current)
             key = f"{spec.value}/{grade.value}"
-            if need == 0:
-                report[key] = current
-                continue
-            for q in build_extra_questions(spec, grade, need):
-                db.add(
-                    TestQuestion(
-                        category_id=cat.id,
-                        variant_group=q["variant_group"],
-                        topic=q["topic"],
-                        text=q["text"],
-                        options_json=json.dumps(q["options"], ensure_ascii=False),
-                        correct_index=q["correct_index"],
-                        difficulty=q["difficulty"],
+            added = 0
+            for group in ("A", "B"):
+                current_g = (
+                    db.query(TestQuestion)
+                    .filter(
+                        TestQuestion.category_id == cat.id,
+                        TestQuestion.variant_group == group,
                     )
+                    .count()
                 )
-            report[key] = current + need
+                need_g = max(0, min_per_variant - current_g)
+                if need_g:
+                    for q in build_extra_questions(spec, grade, need_g, variant_group=group):
+                        db.add(
+                            TestQuestion(
+                                category_id=cat.id,
+                                variant_group=q["variant_group"],
+                                topic=q["topic"],
+                                text=q["text"],
+                                options_json=json.dumps(q["options"], ensure_ascii=False),
+                                correct_index=q["correct_index"],
+                                difficulty=q["difficulty"],
+                            )
+                        )
+                    added += need_g
+
+            current = db.query(TestQuestion).filter(TestQuestion.category_id == cat.id).count()
+            need_total = max(0, min_count - current)
+            if need_total:
+                for q in build_extra_questions(spec, grade, need_total):
+                    db.add(
+                        TestQuestion(
+                            category_id=cat.id,
+                            variant_group=q["variant_group"],
+                            topic=q["topic"],
+                            text=q["text"],
+                            options_json=json.dumps(q["options"], ensure_ascii=False),
+                            correct_index=q["correct_index"],
+                            difficulty=q["difficulty"],
+                        )
+                    )
+                added += need_total
+            report[key] = current + added
     db.flush()
     return report

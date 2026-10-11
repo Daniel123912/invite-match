@@ -41,6 +41,7 @@ def ensure_columns() -> None:
             "BOOLEAN DEFAULT 1" if dialect == "sqlite" else "BOOLEAN DEFAULT TRUE",
         ),
         ("users", "email_confirm_token", "VARCHAR(64)"),
+        ("users", "email_confirm_expires_at", "TIMESTAMP"),
         ("employer_needs", "salary_gross", bool_default),
         ("employer_needs", "report_count", int_default),
         ("employer_needs", "is_suspicious", bool_default),

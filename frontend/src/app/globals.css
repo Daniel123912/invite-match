@@ -836,6 +836,45 @@ button {
 }
 
 /* Sandbox IDE */
+.sandbox-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sandbox-lang {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.sandbox-lang:hover {
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--line));
+}
+
+.sandbox-lang.active {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, white);
+  color: var(--brand);
+}
+
+.sandbox-schema {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+}
+
 .sandbox-examples {
   display: flex;
   flex-wrap: wrap;

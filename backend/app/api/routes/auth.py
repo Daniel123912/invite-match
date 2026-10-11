@@ -1,12 +1,14 @@
-import secrets
+import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.rate_limit import client_ip, limiter
 from app.core.security import create_access_token, get_current_user, hash_password, verify_password
+from app.core.tokens import expires_at, hash_token, is_expired, new_urlsafe_token
 from app.database import get_db
 from app.models import Candidate, Employer, User, UserRole
 from app.schemas import (
@@ -21,6 +23,10 @@ from app.services.minor_consent import parse_birth_date, require_parental_consen
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
 
+_GENERIC_RESEND_MSG = (
+    "Если аккаунт существует и email ещё не подтверждён, отправлена новая ссылка подтверждения."
+)
+
 
 def _token_response(user: User) -> TokenResponse:
     token = create_access_token(user.email, user.role.value)
@@ -32,14 +38,32 @@ def _token_response(user: User) -> TokenResponse:
     )
 
 
+def _issue_confirm_token(user: User) -> str:
+    plain = new_urlsafe_token(32)
+    user.email_confirm_token = hash_token(plain)
+    user.email_confirm_expires_at = expires_at(hours=settings.email_confirm_ttl_hours)
+    return plain
+
+
 @router.get("/check-email")
-def check_email(email: str = Query(...), db: Session = Depends(get_db)):
-    exists = db.query(User).filter(User.email == email.lower().strip()).first()
+def check_email(
+    request: Request,
+    email: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Проверка занятости email. Rate-limited; не раскрывает лишнего в ошибках."""
+    limiter.check(f"check-email:{client_ip(request)}", limit=20, window_sec=60)
+    normalized = email.lower().strip()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", normalized):
+        return {"available": False}
+    exists = db.query(User).filter(User.email == normalized).first()
     return {"available": exists is None}
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
+    limiter.check(f"register:{client_ip(request)}", limit=10, window_sec=60)
+
     if body.role == UserRole.ADMIN:
         raise HTTPException(400, "Cannot register as admin")
 
@@ -53,14 +77,13 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(400, "Email уже зарегистрирован")
 
-    confirm_token = secrets.token_urlsafe(32)
     user = User(
         email=body.email.lower(),
         hashed_password=hash_password(body.password),
         role=body.role,
         email_verified=False,
-        email_confirm_token=confirm_token,
     )
+    plain_token = _issue_confirm_token(user)
     db.add(user)
     db.flush()
 
@@ -74,7 +97,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
                 full_name=body.full_name,
                 consent_152fz=True,
                 consent_152fz_at=now,
-                privacy_public=True,
+                # 152-ФЗ: в подборку только после явного opt-in в настройках
+                privacy_public=False,
                 birth_date=body.birth_date,
                 parental_consent=body.parental_consent,
             )
@@ -91,49 +115,62 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
     db.commit()
 
-    # Без SMTP: токен возвращаем в ответе (демо / DEBUG)
     return RegisterResponse(
-        message="Проверьте email и подтвердите адрес. В демо-режиме токен в ответе API.",
+        message=(
+            "Проверьте email и подтвердите адрес."
+            if not settings.expose_email_confirm_token
+            else "Аккаунт создан. В локальном режиме токен подтверждения в ответе API."
+        ),
         email=user.email,
-        email_confirm_token=confirm_token if settings.debug else None,
+        email_confirm_token=plain_token if settings.expose_email_confirm_token else None,
     )
 
 
 @router.post("/confirm-email", response_model=TokenResponse)
-def confirm_email(body: ConfirmEmailRequest, db: Session = Depends(get_db)):
-    user = (
-        db.query(User)
-        .filter(User.email_confirm_token == body.token.strip())
-        .first()
-    )
-    if not user:
+def confirm_email(request: Request, body: ConfirmEmailRequest, db: Session = Depends(get_db)):
+    limiter.check(f"confirm-email:{client_ip(request)}", limit=20, window_sec=60)
+    token_hash = hash_token(body.token)
+    user = db.query(User).filter(User.email_confirm_token == token_hash).first()
+    if not user or is_expired(user.email_confirm_expires_at):
         raise HTTPException(400, "Неверный или устаревший токен подтверждения")
     user.email_verified = True
     user.email_confirm_token = None
+    user.email_confirm_expires_at = None
     db.commit()
     db.refresh(user)
     return _token_response(user)
 
 
 @router.post("/resend-confirmation", response_model=RegisterResponse)
-def resend_confirmation(email: str = Query(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email.lower().strip()).first()
-    if not user:
-        raise HTTPException(404, "Пользователь не найден")
-    if user.email_verified:
-        raise HTTPException(400, "Email уже подтверждён")
-    token = secrets.token_urlsafe(32)
-    user.email_confirm_token = token
-    db.commit()
+def resend_confirmation(
+    request: Request,
+    email: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Одинаковый ответ всегда — без enumeration."""
+    limiter.check(f"resend:{client_ip(request)}", limit=5, window_sec=60)
+    normalized = email.lower().strip()
+    user = db.query(User).filter(User.email == normalized).first()
+    plain: str | None = None
+    if user and not user.email_verified:
+        plain = _issue_confirm_token(user)
+        db.commit()
     return RegisterResponse(
-        message="Токен подтверждения обновлён",
-        email=user.email,
-        email_confirm_token=token if settings.debug else None,
+        message=_GENERIC_RESEND_MSG,
+        email=normalized,
+        email_confirm_token=(
+            plain if plain and settings.expose_email_confirm_token else None
+        ),
     )
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    limiter.check(f"login:{client_ip(request)}", limit=20, window_sec=60)
     user = db.query(User).filter(User.email == form_data.username.lower()).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")

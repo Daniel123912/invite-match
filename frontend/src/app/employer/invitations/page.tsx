@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { ChatPanel } from "@/components/ChatPanel";
+import { ContactMasks } from "@/components/ContactMasks";
 import { inviteStatusClass, labelInviteStatus } from "@/lib/labels";
 
 interface Invitation {
   id: number;
+  candidate_id: number;
   candidate_name?: string;
   message: string;
   salary_from: number;
@@ -17,7 +19,11 @@ interface Invitation {
   candidate_phone?: string;
   candidate_telegram?: string;
   candidate_email?: string;
+  contacts_revealed?: boolean;
   contacts_revoked?: boolean;
+  phone_display?: string;
+  email_display?: string;
+  telegram_display?: string;
 }
 
 type Filter = "all" | "pending" | "accepted" | "declined";
@@ -113,7 +119,15 @@ export default function EmployerInvitationsPage() {
         <div key={inv.id} className="panel">
           <div className="flex flex-wrap justify-between gap-2">
             <div>
-              <h3 className="section-title text-base">{inv.candidate_name || "Кандидат"}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="section-title text-base">{inv.candidate_name || "Кандидат"}</h3>
+                <Link
+                  href={`/employer/candidates/${inv.candidate_id}`}
+                  className="text-xs font-semibold text-[var(--brand)] underline"
+                >
+                  Изучить профиль
+                </Link>
+              </div>
               <p className="mt-1 text-sm">{inv.message}</p>
               <p className="mt-2 font-semibold text-[var(--brand)]">
                 {inv.salary_from.toLocaleString("ru-RU")} – {inv.salary_to.toLocaleString("ru-RU")} ₽{" "}
@@ -121,18 +135,17 @@ export default function EmployerInvitationsPage() {
                   {inv.salary_gross === false ? "(net)" : "(gross)"}
                 </span>
               </p>
-              {inv.status === "accepted" && !inv.contacts_revoked && (
-                <p className="mt-2 text-sm text-[var(--ok)]">
-                  Контакты: {inv.candidate_email || "—"} · {inv.candidate_phone || "—"} ·{" "}
-                  {inv.candidate_telegram || "—"}
-                </p>
-              )}
-              {inv.status === "accepted" && inv.contacts_revoked && (
-                <p className="mt-2 text-sm text-[var(--warn)]">Кандидат отозвал доступ к контактам</p>
-              )}
-              {inv.status !== "accepted" && (
-                <p className="muted mt-2 text-xs">Контакты скрыты до принятия приглашения</p>
-              )}
+              <ContactMasks
+                className="mt-2"
+                revealed={Boolean(inv.contacts_revealed)}
+                revoked={Boolean(inv.contacts_revoked)}
+                phone={inv.candidate_phone}
+                email={inv.candidate_email}
+                telegram={inv.candidate_telegram}
+                phoneDisplay={inv.phone_display}
+                emailDisplay={inv.email_display}
+                telegramDisplay={inv.telegram_display}
+              />
             </div>
             <span className={`badge ${inviteStatusClass(inv.status)}`}>
               {labelInviteStatus(inv.status)}
